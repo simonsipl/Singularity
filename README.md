@@ -50,6 +50,17 @@ Node v24.13.1, win32/x64, 1,000,000 payment records, 4,096 accounts. Output asse
 
 **13.0x** on the full batch, **15.7x** on the traversal, **5.9x** end-to-end including data ingest.
 
+### The control that cuts that headline down
+
+An adversarial audit of this repo asked the right question: is the baseline a strawman? [`tests/benchmark-honest.js`](tests/benchmark-honest.js) isolates the variables — the **same** AoS objects traversed by a competent plain for-loop with preallocated outputs and zero per-record allocation:
+
+| Baseline | Best | vs exec |
+|---|---|---|
+| Idiomatic HOF style (`.reduce`, spread per record) | 192 ms | exec is **13x faster** |
+| Honest plain loop over the same objects | 12.9 ms | exec is **0.88x — slightly slower** |
+
+On this workload — which reads *every field* of every record — the SoA arena contributes **no traversal speedup at all**. The 13x is entirely attributable to the baseline's allocation style, which disciplined plain JavaScript also avoids. What the arena genuinely buys: **memory density** (18 MB off-heap vs 145 MB GC-scanned), **allocation churn** (4.7 KB vs 210 MB per batch, hence flat tail latency), **zero-copy worker sharing**, and wins on **partial-field scans** that this benchmark does not measure. Quote those, not the 13x.
+
 ### Read this before quoting those numbers
 
 Three honest caveats, because the rest of this document depends on them:
