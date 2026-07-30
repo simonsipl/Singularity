@@ -46,14 +46,33 @@ them looks like ordinary independent statements:
 | [0004](decisions/0004-validation-precedence.md) | Validation short-circuits in a fixed declared order |
 | [0005](decisions/0005-status-codes-not-exceptions.md) | The hot procedure never throws; failures are status codes |
 | [0007](decisions/0007-fee-clamp-order.md) | The fee ceiling is applied before the floor |
+| [0014](decisions/0014-shard-by-account.md) | Parallel execution shards by account, not by index range |
+
+## Parallel execution
+
+`processBatchShard` + `bulk-settlement.worker.js` run the batch across
+`worker_threads` over one zero-copy arena, sharding by account so no two workers
+touch the same balance. Output is byte-identical to sequential for any shard
+count, asserted through real threads.
+
+Measured on 24 logical cores: **1.04x at 2 workers, 1.50x at 4, 2.06x at 8** —
+sublinear by construction, because every shard scans the whole batch to find its
+records. Spawn costs 24–37 ms against a 15 ms batch, so this is only ever worth
+it for a long-lived pool. Read [0014](decisions/0014-shard-by-account.md) before
+adopting it; the ceiling and the skew risk are documented there.
+
+```bash
+node tests/benchmark-parallel.js
+```
 
 ## Known gaps
 
 - `resetLedger` cost is O(arena capacity), not O(batch): at 10,000 records in a
   1,000,000-slot arena the exec loses to a plain loop (0.67x, see
   `tests/benchmark-matrix.js`). Size the arena to the workload.
-- Fee bounds are compile-time constants. Per-tenant fee tables would need startup
-  validation that `MIN <= MAX`, which does not exist ([0007](decisions/0007-fee-clamp-order.md)).
+- Fee bounds are compile-time constants, and the module now refuses to load if
+  `MIN_FEE > MAX_FEE` ([0007](decisions/0007-fee-clamp-order.md)). When fee tables
+  become per-tenant configuration, that guard must move to the loader.
 - Declined payments report a fee they were not charged. Intentional, and a real
   footgun for anyone summing the fees array
   ([0003](decisions/0003-insufficient-funds-reports-fee.md)).

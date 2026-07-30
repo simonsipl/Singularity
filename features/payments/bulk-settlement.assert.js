@@ -527,4 +527,156 @@ check('exec delegates memory layout to the runtime rather than hand-rolling it',
     'exec must not construct views over the arena by hand');
 });
 
-process.stdout.write('\n  ' + passed + ' checks passed\n\n');
+/* ---- R7: sharded parallel execution ------------------------------------ */
+
+/* deterministic non-trivial batch reused by every shard test */
+function seedShardBatch(L, n, accounts) {
+  for (let i = 0; i < n; i++) {
+    L.ids[i] = i;
+    L.accounts[i] = (i % 89 === 0) ? 4000000000 + i : (i * 613) % accounts;
+    L.amounts[i] = (i % 71 === 0) ? -i : 900 + ((i * 379) % 90000);
+    L.currencies[i] = (i % 29 === 0) ? 9 : i % 3;
+    L.flags[i] = i & 1;
+  }
+  for (let a = 0; a < accounts; a++) L.balances[a] = 250000 + a * 7;
+}
+
+function runSequentialReference(n, accounts) {
+  const L = X.allocLedger(n, accounts);
+  X.resetLedger(L);
+  seedShardBatch(L, n, accounts);
+  X.processBatch(L, n);
+  return L;
+}
+
+check('shard.equivalence: any shard count reproduces sequential byte-for-byte', function () {
+  const n = 5000, accounts = 64;
+  const ref = runSequentialReference(n, accounts);
+  const shardCounts = [1, 2, 3, 4, 8];
+  for (let s = 0; s < shardCounts.length; s++) {
+    const W = shardCounts[s];
+    const L = X.allocLedger(n, accounts);
+    X.resetLedger(L);
+    seedShardBatch(L, n, accounts);
+    const slabs = [];
+    for (let k = 0; k < W; k++) {
+      const slab = new Float64Array(16);
+      X.processBatchShard(L, n, k, W, slab);
+      slabs.push(slab);
+    }
+    X.foldShardStats(L, slabs, W);
+    assert.deepEqual(Array.from(L.statuses.subarray(0, n)), Array.from(ref.statuses.subarray(0, n)), W + ' shards: statuses');
+    assert.deepEqual(Array.from(L.fees.subarray(0, n)), Array.from(ref.fees.subarray(0, n)), W + ' shards: fees');
+    assert.deepEqual(Array.from(L.balances), Array.from(ref.balances), W + ' shards: balances');
+    assert.deepEqual(Array.from(L.stats), Array.from(ref.stats), W + ' shards: stats');
+  }
+});
+
+check('shard.ownership: every record has exactly one owner, none left PENDING', function () {
+  const n = 3000, accounts = 64, W = 5;
+  const L = X.allocLedger(n, accounts);
+  X.resetLedger(L);
+  seedShardBatch(L, n, accounts);
+  const slabs = [];
+  let processed = 0;
+  for (let k = 0; k < W; k++) {
+    const slab = new Float64Array(16);
+    X.processBatchShard(L, n, k, W, slab);
+    processed += slab[X.STAT_SETTLED_COUNT] + slab[X.STAT_REJECTED_COUNT];
+    slabs.push(slab);
+  }
+  assert.equal(processed, n, 'ownership must partition the batch exactly');
+  for (let i = 0; i < n; i++) {
+    assert.notEqual(L.statuses[i], X.STATUS_PENDING, 'record ' + i + ' unowned');
+  }
+});
+
+check('shard.stats_isolation: shards never touch the shared stats block', function () {
+  const n = 2000, accounts = 32, W = 4;
+  const L = X.allocLedger(n, accounts);
+  X.resetLedger(L);
+  seedShardBatch(L, n, accounts);
+  for (let k = 0; k < W; k++) {
+    X.processBatchShard(L, n, k, W, new Float64Array(16));
+  }
+  for (let s = 0; s < X.STAT_SLOTS; s++) {
+    assert.equal(L.stats[s], 0, 'stats slot ' + s + ' written before fold');
+  }
+});
+
+check('shard order beats validation order for foreign records (owner runs all checks)', function () {
+  /* a record with a bad amount AND a foreign account must be untouched by
+   * non-owner shards even though sequential validation checks amount first */
+  const L = X.allocLedger(4, 8);
+  X.resetLedger(L);
+  L.amounts[0] = -5; L.accounts[0] = 3;      /* owner: 3 % 2 = shard 1 */
+  L.amounts[1] = 5000; L.accounts[1] = 2;    /* owner: shard 0 */
+  L.balances.fill(100000);
+  const slab = new Float64Array(16);
+  X.processBatchShard(L, 2, 0, 2, slab);     /* run only shard 0 */
+  assert.equal(L.statuses[0], X.STATUS_PENDING, 'foreign record touched by non-owner');
+  assert.equal(L.statuses[1], X.STATUS_SETTLED);
+  X.processBatchShard(L, 2, 1, 2, slab);
+  assert.equal(L.statuses[0], X.STATUS_INVALID_AMOUNT, 'owner must apply full validation');
+});
+
+check('fee.bounds_sane: load-time guard exists in the exec source', function () {
+  const fs = require('node:fs');
+  const lint = require('../../tests/_source-lint.js');
+  const code = lint.stripCommentsAndStrings(
+    fs.readFileSync(require.resolve('../../src/exec/bulk-settlement.exec.js'), 'utf8'));
+  assert.ok(/if \(LIMIT_MIN_FEE > LIMIT_MAX_FEE\)/.test(code), 'guard missing');
+  assert.ok(/throw new Error/.test(code), 'guard must throw, not warn');
+});
+
+/* ---- R7 across real threads: byte-identical through worker_threads ------ */
+
+(function workerEquivalence() {
+  const { Worker } = require('node:worker_threads');
+  const path = require('node:path');
+  const n = 100000, accounts = 1024, W = 4;
+
+  const ref = runSequentialReference(n, accounts);
+
+  const L = X.allocLedger(n, accounts);
+  X.resetLedger(L);
+  seedShardBatch(L, n, accounts);
+  const statsSAB = new SharedArrayBuffer(W << 7);
+  const workerPath = path.join(__dirname, '..', '..', 'src', 'exec', 'bulk-settlement.worker.js');
+
+  const workers = [];
+  let ready = 0, done = 0, failed = false;
+
+  function finish() {
+    for (let k = 0; k < W; k++) workers[k].terminate();
+    if (failed) process.exit(1);
+    const slabs = [];
+    for (let k = 0; k < W; k++) slabs.push(new Float64Array(statsSAB, k << 7, 16));
+    X.foldShardStats(L, slabs, W);
+    assert.deepEqual(Array.from(L.statuses.subarray(0, n)), Array.from(ref.statuses.subarray(0, n)), 'worker statuses');
+    assert.deepEqual(Array.from(L.fees.subarray(0, n)), Array.from(ref.fees.subarray(0, n)), 'worker fees');
+    assert.deepEqual(Array.from(L.balances), Array.from(ref.balances), 'worker balances');
+    assert.deepEqual(Array.from(L.stats), Array.from(ref.stats), 'worker stats');
+    passed++;
+    process.stdout.write('  ok  shard.equivalence holds across real worker_threads (' +
+      W + ' workers, ' + n + ' records, zero-copy)\n');
+    process.stdout.write('\n  ' + passed + ' checks passed\n\n');
+  }
+
+  for (let k = 0; k < W; k++) {
+    const w = new Worker(workerPath, {
+      workerData: { arena: L.arena, capacity: n, accountCount: accounts, shard: k, shards: W, statsSAB: statsSAB }
+    });
+    w.on('error', function (e) { failed = true; process.stderr.write('worker error: ' + e.message + '\n'); });
+    w.on('message', function (msg) {
+      if (msg === 'ready') {
+        ready++;
+        if (ready === W) { for (let j = 0; j < W; j++) workers[j].postMessage({ count: n }); }
+      } else if (msg === 'done') {
+        done++;
+        if (done === W) finish();
+      }
+    });
+    workers.push(w);
+  }
+})();

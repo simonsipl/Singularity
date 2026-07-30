@@ -172,6 +172,7 @@ export interface PaymentProcessorIntent {
     "fee.4_ceiling: if fee > Limits.MAX_FEE then fee = Limits.MAX_FEE",
     "fee.5_floor: else if fee < Limits.MIN_FEE then fee = Limits.MIN_FEE",
     "fee.rounding: every division truncates toward zero; all operands are non-negative so this is equivalent to floor",
+    "fee.bounds_sane: the module refuses to load if MIN_FEE exceeds MAX_FEE; an incoherent fee table is a bad program, not bad data",
 
     // -- R4. Balance check --------------------------------------------------
     "balance.debit_total: the amount debited is (amount + fee); the fee is never debited separately",
@@ -190,7 +191,13 @@ export interface PaymentProcessorIntent {
     "exec.soa: records are stored struct-of-arrays inside one SharedArrayBuffer arena, allocated once",
     "exec.no_throw: the hot procedure never throws; every failure is a status code plus a counter",
     "exec.reentrant: reset() followed by an identical replay must produce byte-identical output",
-    "exec.zero_alloc: no allocation occurs inside the traversal loop"
+    "exec.zero_alloc: no allocation occurs inside the traversal loop",
+
+    // -- R7. Sharded parallel execution ------------------------------------
+    "shard.ownership: in sharded execution, record i is processed by exactly the shard whose id equals accounts[i] mod shardCount; every record has exactly one owner, including records whose account is unknown",
+    "shard.order: within one account, records retain ascending index order, so per-account balance mutation order matches sequential execution exactly",
+    "shard.equivalence: for any shard count, the union of shard outputs (statuses, fees, balances, summed counters) is byte-identical to sequential processBatch",
+    "shard.stats_isolation: a shard writes its counters to a caller-provided slab and never touches the shared stats block; the caller folds slabs after all shards complete"
   ];
 
   error_states:

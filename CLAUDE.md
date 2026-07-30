@@ -55,6 +55,10 @@ node --expose-gc --max-old-space-size=6144 tests/benchmark.js
 npm run bench:matrix
 ```
 
+```bash
+npm run bench:parallel
+```
+
 `check` runs three gates: **drift** (does each exec's `intent-sha256` stamp match
 its intent?), **verify** (every assert suite), **decisions** (does every rule have
 recorded rationale?).
@@ -63,9 +67,11 @@ recorded rationale?).
 
 | Feature | Workflow | Rules | Checks |
 |---|---|---|---|
-| payments | `bulk-settlement` | 26 | 33 |
+| payments | `bulk-settlement` | 31 | 39 |
 | clients | `visit-profiling` | 43 | 47 |
 | (framework) | `arena` runtime | — | 23 |
+| (framework) | `ingest` runtime | — | 18 |
+| (framework) | kit sync | — | 13 |
 
 ## Invariants
 
@@ -106,3 +112,10 @@ waive explicitly. 7. `singularity check` green.
   variant its own kernel copy or inline caches cross-pollute the numbers.
 - `resetLedger` is O(arena capacity), not O(batch). A 10k batch in a 1M-slot
   arena loses to a plain loop (0.67x). Right-size arenas to workloads.
+- Parallel shards by ACCOUNT, never by index range — index ranges race on
+  balance slots and look fine in small tests. Every shard scans the whole batch,
+  so scaling is sublinear (2.06x at 8 workers) and skewed accounts serialise.
+  See `decisions/0014`.
+- Direct JSON ingest is an ALLOCATION win, not a speed win: 668x less garbage but
+  0.83x the speed of native `JSON.parse`. Never sell it as faster. It is also
+  NOT atomic — the returned count is the commit point. See `decisions/0015`.

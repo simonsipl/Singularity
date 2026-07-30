@@ -17,7 +17,9 @@
     "demo": "node examples/salon-profiler.demo.js",
     "bench": "node --expose-gc --max-old-space-size=6144 tests/benchmark.js",
     "bench:honest": "node tests/benchmark-honest.js",
-    "bench:matrix": "node --expose-gc --max-old-space-size=6144 tests/benchmark-matrix.js"
+    "bench:matrix": "node --expose-gc --max-old-space-size=6144 tests/benchmark-matrix.js",
+    "bench:parallel": "node tests/benchmark-parallel.js",
+    "bench:ingest": "node --expose-gc tests/benchmark-ingest.js"
   },
   "engines": {
     "node": ">=18"

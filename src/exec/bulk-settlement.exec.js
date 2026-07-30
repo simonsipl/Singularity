@@ -2,7 +2,7 @@
 /* SINGULARITY EXEC UNIT — compiled from features/payments/bulk-settlement.intent.ts
  * DO NOT HAND-EDIT. DO NOT REFORMAT FOR READABILITY. Regenerate from the intent.
  * Verified by features/payments/bulk-settlement.assert.js
- * intent-sha256: e7949f18fcec38d97ddb8c4091643ad0b6b68992bf33fcacebca59269d63f0b7 */
+ * intent-sha256: b9c3d98b3db854a56048eac7d4f16e7dc3f962aba75387199aebf43aef778ceb */
 
 const { defineArena } = require('../runtime/arena.js');
 
@@ -29,6 +29,13 @@ const LIMIT_MAX_PAYMENT_AMOUNT = 50000000;
 const LIMIT_MAX_FEE = 5000;
 const LIMIT_MIN_FEE = 30;
 const LIMIT_MAX_CURRENCY_CODE = 2;
+
+/* fee.bounds_sane: a fee table that cannot clamp coherently is a bad program,
+ * not bad data — refuse to load rather than let the ceiling silently win. */
+if (LIMIT_MIN_FEE > LIMIT_MAX_FEE) {
+  throw new Error('bulk-settlement: MIN_FEE (' + LIMIT_MIN_FEE +
+    ') exceeds MAX_FEE (' + LIMIT_MAX_FEE + ') — fee table is incoherent');
+}
 
 const FLAG_PRIORITY = 1;
 
@@ -137,6 +144,75 @@ function processBatch(L, count) {
   return cSettled;
 }
 
+/* Sharded traversal for worker fan-out. Record i is processed iff
+ * accounts[i] % shards === shard, so every record has exactly one owner and
+ * per-account ordering is preserved — the union over shards is byte-identical
+ * to processBatch. Counters go to the caller-provided outStats slab (>= 9
+ * f64 slots), NEVER to L.stats: shards must not race on the shared block.
+ * The caller sums slabs after join. See decisions/0014. */
+function processBatchShard(L, count, shard, shards, outStats) {
+  const amounts = L.amounts;
+  const accounts = L.accounts;
+  const currencies = L.currencies;
+  const flags = L.flags;
+  const fees = L.fees;
+  const statuses = L.statuses;
+  const balances = L.balances;
+  const accountCount = L.accountCount;
+
+  let cSettled = 0, cRejected = 0, cInvalid = 0, cLimit = 0, cCurrency = 0, cAccount = 0, cFunds = 0;
+  let sumAmount = 0, sumFees = 0;
+
+  for (let i = 0; i < count; i++) {
+    const acct = accounts[i];
+    if (acct % shards !== shard) continue;
+    const amt = amounts[i];
+    if (amt <= 0) { statuses[i] = STATUS_INVALID_AMOUNT; cInvalid++; cRejected++; continue; }
+    if (amt > LIMIT_MAX_PAYMENT_AMOUNT) { statuses[i] = STATUS_AMOUNT_EXCEEDS_LIMIT; cLimit++; cRejected++; continue; }
+    const cur = currencies[i];
+    if (cur > LIMIT_MAX_CURRENCY_CODE) { statuses[i] = STATUS_UNSUPPORTED_CURRENCY; cCurrency++; cRejected++; continue; }
+    if (acct >= accountCount) { statuses[i] = STATUS_UNKNOWN_ACCOUNT; cAccount++; cRejected++; continue; }
+
+    let f;
+    if (amt < 10000) f = ((amt * 290) / 10000 | 0) + 30;
+    else if (amt < 100000) f = ((amt * 250) / 10000 | 0) + 25;
+    else if (amt < 1000000) f = ((amt * 190) / 10000 | 0) + 20;
+    else f = ((amt * 120) / 10000 | 0);
+    if (cur !== 0) f += (amt * 15) / 10000 | 0;
+    if ((flags[i] & FLAG_PRIORITY) !== 0) f += f >> 1;
+    if (f > LIMIT_MAX_FEE) f = LIMIT_MAX_FEE;
+    else if (f < LIMIT_MIN_FEE) f = LIMIT_MIN_FEE;
+
+    fees[i] = f;
+    const total = amt + f;
+    const bal = balances[acct];
+    if (bal < total) { statuses[i] = STATUS_INSUFFICIENT_FUNDS; cFunds++; cRejected++; continue; }
+    balances[acct] = bal - total;
+    statuses[i] = STATUS_SETTLED;
+    cSettled++; sumAmount += amt; sumFees += f;
+  }
+
+  outStats[STAT_SETTLED_COUNT] = cSettled;
+  outStats[STAT_REJECTED_COUNT] = cRejected;
+  outStats[STAT_TOTAL_SETTLED_AMOUNT] = sumAmount;
+  outStats[STAT_TOTAL_FEES] = sumFees;
+  outStats[STAT_REJ_INVALID_AMOUNT] = cInvalid;
+  outStats[STAT_REJ_AMOUNT_EXCEEDS_LIMIT] = cLimit;
+  outStats[STAT_REJ_UNSUPPORTED_CURRENCY] = cCurrency;
+  outStats[STAT_REJ_UNKNOWN_ACCOUNT] = cAccount;
+  outStats[STAT_REJ_INSUFFICIENT_FUNDS] = cFunds;
+  return cSettled;
+}
+
+/* folds per-shard slabs into the shared stats block; main thread only, after join */
+function foldShardStats(L, slabs, shards) {
+  const stats = L.stats;
+  for (let k = 0; k < shards; k++) {
+    const slab = slabs[k];
+    for (let s = 0; s < 9; s++) stats[s] += slab[s];
+  }
+}
+
 module.exports = {
   STATUS_PENDING: STATUS_PENDING,
   STATUS_SETTLED: STATUS_SETTLED,
@@ -165,5 +241,7 @@ module.exports = {
   attachLedger: attachLedger,
   resetLedger: resetLedger,
   computeFee: computeFee,
-  processBatch: processBatch
+  processBatch: processBatch,
+  processBatchShard: processBatchShard,
+  foldShardStats: foldShardStats
 };

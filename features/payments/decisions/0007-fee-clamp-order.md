@@ -8,8 +8,10 @@ workflow: bulk-settlement
 rules:
   - fee.4_ceiling
   - fee.5_floor
+  - fee.bounds_sane
 verified_by:
   - "fee.4_ceiling / fee.5_floor clamp on both sides"
+  - "fee.bounds_sane: load-time guard exists in the exec source"
   - "fee never leaves the declared [MIN_FEE, MAX_FEE] envelope across a wide sweep"
 ---
 
@@ -28,10 +30,13 @@ envelope for any `MIN <= MAX`.
 
 - The fee is provably within [30, 5000] for every input, asserted by sweeping the
   full amount range against every currency and flag combination.
-- If someone later configures `MIN > MAX`, the ceiling wins. That is arbitrary; the
-  real defence would be rejecting such a configuration at startup, which is
-  **not currently implemented** — the bounds are compile-time literals today. Worth
-  fixing when fee tables become configurable per tenant.
+- If someone later configures `MIN > MAX`, the ceiling would win — an arbitrary
+  outcome. That gap is now closed: the module **refuses to load** if
+  `MIN_FEE > MAX_FEE`, throwing at require time rather than silently clamping
+  wrong. An incoherent fee table is a bad program, not bad data, so it is an
+  exception and not a status code — the same split [[0005]] draws. When fee
+  tables become per-tenant configuration rather than compile-time literals, this
+  guard must move to wherever the table is loaded.
 
 ## Alternatives rejected
 

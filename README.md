@@ -25,6 +25,60 @@ npm run bench:matrix
 
 ---
 
+## TL;DR
+
+An experiment: **the code was AI-generated ("vibe-coded"), on purpose**, to see what
+happens when a model writes deliberately unreadable, machine-optimised code and the
+only thing keeping it honest is mandatory verification. What follows is what actually
+happened, including the parts that went badly.
+
+**The idea.** You write a contract (`*.intent.ts`) — rules, no logic. A model compiles
+it into procedural TypedArray code nobody reads. Tests, a decision log, and a CLI gate
+enforce that the generated code matches the contract.
+
+**Is it faster?** Sometimes, and less than first advertised.
+
+| Compared against | Result |
+|---|---|
+| Idiomatic JS (`.reduce`, spread per record) | **~9x faster** |
+| *Disciplined* plain JS, tidy objects | **~1–1.5x** — near parity |
+| Same, but objects scattered across the heap (i.e. real life) | **5–12x faster** |
+| Small batch in an oversized arena | **it loses** (0.67x) |
+| 8 worker threads vs 1 | **2.06x** — sublinear, and costs 8 cores |
+| Direct JSON→arena vs `JSON.parse` | **0.83x — slower**, but 668x less garbage |
+
+The original "13x faster" headline was measured against a strawman. An audit added the
+missing control and it collapsed to roughly parity. That correction is in the git
+history, not quietly edited out.
+
+**So where's the actual win?** **Memory, not speed.** 18 MB off-heap vs 145 MB
+GC-scanned; 4.7 KB of garbage per batch vs 210 MB. That means no GC pauses, flat p99,
+and ~4x more pods per node. On a memory-bound platform that is the bill, not the
+nanoseconds.
+
+**Does it speed up development?** Slower to the first feature (you build verification
+machinery first), faster per feature after. The second module went much quicker than
+the first. The permanent tax: every rule needs a recorded rationale or an explicit
+waiver.
+
+**What did it cost?** You cannot read the product. Debugging happens through the
+contract, the tests and the decision log. If those are weak you are blind. The
+discipline is load-bearing, not optional.
+
+**The genuinely interesting result.** The verification machinery caught its own
+marketing — it demolished the 13x claim, found a `__proto__` bug that silently deleted
+a field, and exposed an `O(capacity)` reset making small batches *slower*. The value
+was never "AI writes fast code". It is that claims became cheap to falsify, including
+our own.
+
+**Would I use it?** For hot batch paths — settlement runs, nightly analytics —
+inside an otherwise normal codebase: yes. As a whole backend: no. Most code never gets
+hot enough to repay the tax.
+
+Everything is reproducible from a clean clone: `npm run check`, `npm run bench:matrix`.
+
+---
+
 ## Table of contents
 
 - [Measured baseline](#measured-baseline)
@@ -424,15 +478,15 @@ Ordered by how much they unblock, with current status stated honestly:
 | Item | Status |
 |---|---|
 | Bootstrap kit (`framework/`) — copy into an empty repo, `check` passes, skeleton feature included | **shipped** — smoke-tested end to end |
+| Sharded parallel execution across `worker_threads` (§1.4) | **shipped** — byte-identical to sequential through real threads; 2.06x at 8 workers, sublinear by design ([0014](features/payments/decisions/0014-shard-by-account.md)) |
+| Direct JSON-to-arena ingest (§3.3) | **shipped** — 668x less allocation, but 0.83x the speed of `JSON.parse`; an allocation win, not a speed win ([0015](decisions/0015-direct-json-ingest.md)) |
+| Fee-table bounds validation at load time | **shipped** — module refuses to load if `MIN_FEE > MAX_FEE` |
 | Benchmark matrix isolating layout, allocation style, shape and heap entropy | **shipped** — `tests/benchmark-matrix.js`, all variants equivalence-gated |
 | Schema-driven arena runtime (`src/runtime/arena.js`) | **shipped** — 23-check suite, hidden-class identity verified via `%HaveSameMap` |
 | `attachLedger` for zero-copy worker fan-out (§1.4) | **shipped** — memory sharing proven both directions |
 | `ArrayBuffer` fallback for non-isolated browser contexts (§2.4) | **shipped** — `shared: false` on any schema |
 | Decision records + coverage enforcement (`docs/DECISIONS.md`) | **shipped** — 26/26 rules documented, stale references fail the build |
 | CLI (`drift` / `verify` / `decisions` / `layout` / `check`) | **shipped** |
-| Sharded traversal + concurrent-worker coverage | **not implemented** — §1.4's parallel algorithm is unproven |
-| Direct JSON-to-arena ingest (removes the boundary cost in §3.3) | **not implemented** — highest-leverage remaining item |
-| Fee-table bounds validation at startup (`MIN > MAX` is currently unchecked) | **not implemented** — see [0007](decisions/0007-fee-clamp-order.md) |
 | OpenAPI / JSON Schema generation from intent rules | roadmap |
 | Typed client SDK generation | roadmap |
 | Automated variant sweep with equivalence gating (§4.3) | roadmap |

@@ -30,6 +30,8 @@ const SYNCED = [
   ['.gitignore', 'framework/.gitignore'],
   ['bin/singularity.js', 'framework/bin/singularity.js'],
   ['src/runtime/arena.js', 'framework/src/runtime/arena.js'],
+  ['src/runtime/ingest.js', 'framework/src/runtime/ingest.js'],
+  ['tests/ingest.assert.js', 'framework/tests/ingest.assert.js'],
   ['tests/_source-lint.js', 'framework/tests/_source-lint.js'],
   ['tests/arena.assert.js', 'framework/tests/arena.assert.js'],
   ['decisions/_template.md', 'framework/decisions/_template.md']
