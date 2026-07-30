@@ -504,23 +504,27 @@ check('ledger handle keeps one static shape across allocations', function () {
 
 check('exec source contains no banned constructs', function () {
   const fs = require('node:fs');
+  const lint = require('./_source-lint.js');
   const src = fs.readFileSync(require.resolve('../src/exec/payment-processor.exec.js'), 'utf8');
-  const banned = [
-    /\bclass\s+\w/, /\bextends\b/, /\bthis\b/, /=>/,
-    /\.map\(/, /\.filter\(/, /\.reduce\(/, /\.forEach\(/, /\.some\(/, /\.every\(/,
-    /\bfor\s*\(\s*(?:const|let|var)\s+\w+\s+of\b/, /\bfor\s*\(\s*(?:const|let|var)\s+\w+\s+in\b/,
-    /\bdelete\s+\w+\./, /\basync\b/, /\bawait\b/, /\bconsole\./, /\btry\b/, /\.\.\./
-  ];
-  for (let i = 0; i < banned.length; i++) {
-    assert.equal(banned[i].test(src), false, 'banned construct present: ' + banned[i]);
-  }
   assert.ok(/^'use strict';/.test(src), "missing 'use strict'");
-  /* every indexed loop must cache its bound in a local */
-  const loops = src.match(/for\s*\([^)]*\)/g) || [];
-  for (let i = 0; i < loops.length; i++) {
-    assert.ok(/<\s*(count|len|bytes|[a-zA-Z]+Count|[A-Z_]+)\b/.test(loops[i]),
-      'uncached loop bound: ' + loops[i]);
-  }
+  lint.assertNoBannedConstructs(assert, src);
+  lint.assertLoopBoundsCached(assert, src);
+  /* exec units additionally must not use `this` or wrap hot loops in try/catch */
+  const code = lint.stripCommentsAndStrings(src);
+  assert.equal(/\bthis\b/.test(code), false, '`this` in an exec unit');
+  assert.equal(/\btry\b/.test(code), false, 'try/catch in an exec unit');
+});
+
+check('exec delegates memory layout to the runtime rather than hand-rolling it', function () {
+  const fs = require('node:fs');
+  const lint = require('./_source-lint.js');
+  const code = lint.stripCommentsAndStrings(
+    fs.readFileSync(require.resolve('../src/exec/payment-processor.exec.js'), 'utf8'));
+  assert.ok(/defineArena\(/.test(code), 'exec must declare its arena via defineArena');
+  assert.equal(/new SharedArrayBuffer\(/.test(code), false,
+    'exec must not allocate its own backing store — the runtime owns that');
+  assert.equal(/new (?:Float64|Int32|Uint32|Uint8)Array\(\s*\w*arena/.test(code), false,
+    'exec must not construct views over the arena by hand');
 });
 
 process.stdout.write('\n  ' + passed + ' checks passed\n\n');

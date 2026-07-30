@@ -7,15 +7,17 @@ src/intents/<name>.intent.ts   →  [AI compiler]  →  src/exec/<name>.exec.js
         (you write this)          (.cursorrules)   +  tests/<name>.assert.js
 ```
 
-The reference module is a bulk payment processor. It ships with a 30-rule contract, a 32-check loopback suite, and a 1M-record benchmark against an idiomatic implementation.
+The reference module is a bulk payment processor. It ships with a 26-rule contract, a 33-check loopback suite, and a 1M-record benchmark against an idiomatic implementation.
 
 ```bash
-node tests/payment-processor.assert.js
+node bin/singularity.js check
 ```
 
 ```bash
 node --expose-gc --max-old-space-size=6144 tests/benchmark.js
 ```
+
+`check` gates three things mechanically: **drift** (is any exec unit older than the intent it was compiled from?), **verify** (every assert suite), and **decisions** (does every intent rule have recorded rationale?). Exit 0 means committable.
 
 ---
 
@@ -107,7 +109,7 @@ Three rules make this work:
 
 ### 1.3 Intents are service contracts you already needed
 
-`payment-processor.intent.ts` is a TypeScript interface plus 30 numbered, machine-readable rules. It is simultaneously the compiler input, the API contract, the test specification, and the code review artifact. One file, and it is the only file a human edits.
+`payment-processor.intent.ts` is a TypeScript interface plus 26 numbered, machine-readable rules. It is simultaneously the compiler input, the API contract, the test specification, and the code review artifact. One file, and it is the only file a human edits.
 
 This collapses a category of microservice drift. The usual failure — the OpenAPI spec, the validation layer, the tests, and the implementation each encoding a slightly different notion of "valid payment" — becomes structurally impossible, because all four are generated from one source and the generated suite fails if they disagree.
 
@@ -137,7 +139,9 @@ for (let k = 0; k < W; k++) {
 }
 ```
 
-> **Not yet implemented.** This pattern needs `attachLedger(arena, capacity, accountCount)` — rebuilding the views over an existing `SharedArrayBuffer` instead of allocating a new one. All offsets in `allocLedger` are computed deterministically from `capacity` and `accountCount`, so this is a mechanical ~15-line addition, but **it is not in the exec unit today** and the sharded traversal it implies is not covered by the current 32-check suite. Do not build on it until both exist. See [Roadmap](#roadmap).
+> **Partially implemented.** `attachLedger(arena, capacity, accountCount)` now exists and is tested: `tests/arena.assert.js` verifies that attach rebuilds byte-identical views over an existing buffer without copying, that writes are visible in both directions, and that a dims mismatch is rejected rather than silently producing overlapping views.
+>
+> **The sharded traversal above is still not implemented.** `processBatch` has no shard parameter, so there is no exec-level support for "process only the records belonging to shard k", and nothing in the suite covers concurrent workers over one arena. The memory plumbing is proven; the parallel algorithm is not. Do not deploy this pattern yet. See [Roadmap](#roadmap).
 
 ### 1.5 Deployment topology
 
@@ -228,7 +232,9 @@ Cross-Origin-Embedder-Policy: require-corp
 
 Cross-origin isolation will break third-party embeds, some ad and analytics tags, and any iframe not serving CORP headers. This is frequently a blocker on real consumer sites, and it is a site-wide decision, not a per-page one. Verify `crossOriginIsolated === true` before assuming the arena is available, and keep a fallback path.
 
-If isolation is not viable, `allocLedger` can be changed to a plain `ArrayBuffer` — you keep the SoA layout, the zero-allocation traversal, and nearly all of the single-threaded win, losing only cross-worker sharing. **This substitution is not implemented or tested today.** The current exec asserts `SharedArrayBuffer` and the suite checks for it.
+If isolation is not viable, declare the arena with `shared: false` and the runtime allocates a plain `ArrayBuffer` instead — you keep the SoA layout, the zero-allocation traversal, and nearly all of the single-threaded win, losing only cross-worker sharing. **This is implemented and tested** (`non-shared mode yields a plain ArrayBuffer`), though the payment exec unit currently declares `shared: true`; flipping it is a one-line schema change.
+
+One further browser constraint: the runtime builds handles with `new Function`, which a strict CSP blocks without `unsafe-eval`. See [0006](decisions/0006-schema-driven-arena-runtime.md) for why codegen is load-bearing rather than incidental.
 
 ---
 
@@ -335,7 +341,7 @@ The discipline that makes this safe is already in the ruleset: **equivalence is 
 
 Not code generation — that is the mechanism, not the value. The value is that **the optimization ceiling stops being bounded by what a human will maintain.**
 
-Nobody hand-writes flattened, hand-inlined, arena-offset code with a 32-check adversarial suite for a fee calculation, because the maintenance cost is indefensible against the benefit. When generation and verification are mechanical, that calculus inverts: the human maintains a 30-rule contract that reads like a specification, and the machine-hostile implementation becomes disposable. Regenerate it when the contract changes; never read it.
+Nobody hand-writes flattened, hand-inlined, arena-offset code with an adversarial suite for a fee calculation, because the maintenance cost is indefensible against the benefit. When generation and verification are mechanical, that calculus inverts: the human maintains a 26-rule contract that reads like a specification, and the machine-hostile implementation becomes disposable. Regenerate it when the contract changes; never read it.
 
 The infrastructure saving is downstream of that inversion, and it is the honest version of the pitch: not "AI writes faster code," but "AI removes the maintenance cost that previously made this class of optimization irrational."
 
@@ -362,10 +368,14 @@ Ordered by how much they unblock, with current status stated honestly:
 
 | Item | Status |
 |---|---|
-| `attachLedger(arena, capacity, accountCount)` for zero-copy worker fan-out (§1.4) | **not implemented** — required before any multi-worker claim |
-| Sharded traversal + coverage in the assert suite | **not implemented** — §1.4 is unproven without it |
-| `ArrayBuffer` fallback for non-isolated browser contexts (§2.4) | **not implemented** — exec asserts `SharedArrayBuffer` |
+| Schema-driven arena runtime (`src/runtime/arena.js`) | **shipped** — 23-check suite, hidden-class identity verified via `%HaveSameMap` |
+| `attachLedger` for zero-copy worker fan-out (§1.4) | **shipped** — memory sharing proven both directions |
+| `ArrayBuffer` fallback for non-isolated browser contexts (§2.4) | **shipped** — `shared: false` on any schema |
+| Decision records + coverage enforcement (`docs/DECISIONS.md`) | **shipped** — 26/26 rules documented, stale references fail the build |
+| CLI (`drift` / `verify` / `decisions` / `layout` / `check`) | **shipped** |
+| Sharded traversal + concurrent-worker coverage | **not implemented** — §1.4's parallel algorithm is unproven |
 | Direct JSON-to-arena ingest (removes the boundary cost in §3.3) | **not implemented** — highest-leverage remaining item |
+| Fee-table bounds validation at startup (`MIN > MAX` is currently unchecked) | **not implemented** — see [0007](decisions/0007-fee-clamp-order.md) |
 | OpenAPI / JSON Schema generation from intent rules | roadmap |
 | Typed client SDK generation | roadmap |
 | Automated variant sweep with equivalence gating (§4.3) | roadmap |
@@ -377,12 +387,17 @@ Ordered by how much they unblock, with current status stated honestly:
 
 | Path | Role |
 |---|---|
-| [`.cursorrules`](.cursorrules) | Compiler ruleset — normative, read before touching `src/exec/` |
+| [`.cursorrules`](.cursorrules) | Compiler ruleset — normative, read before touching `src/exec/` or `src/runtime/` |
 | [`CLAUDE.md`](CLAUDE.md) | Entry point for agents |
-| [`src/intents/payment-processor.intent.ts`](src/intents/payment-processor.intent.ts) | Declarative contract, 30 rules, zero logic |
+| [`bin/singularity.js`](bin/singularity.js) | CLI — the enforcement surface |
+| [`src/intents/payment-processor.intent.ts`](src/intents/payment-processor.intent.ts) | Declarative contract, 26 rules, zero logic |
 | [`src/exec/payment-processor.exec.js`](src/exec/payment-processor.exec.js) | Generated execution unit — do not hand-edit |
-| [`tests/payment-processor.assert.js`](tests/payment-processor.assert.js) | Loopback suite, 32 checks, zero dependencies |
+| [`src/runtime/arena.js`](src/runtime/arena.js) | Schema-driven arena allocator — owns all offset math |
+| [`tests/payment-processor.assert.js`](tests/payment-processor.assert.js) | Loopback suite, 33 checks, zero dependencies |
+| [`tests/arena.assert.js`](tests/arena.assert.js) | Runtime suite, 23 checks incl. adversarial codegen cases |
 | [`tests/benchmark.js`](tests/benchmark.js) | 1M-record benchmark with equivalence gating |
+| [`decisions/`](decisions/) | Why the non-obvious choices were made |
+| [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision-record format and workflow |
 
 ### Invariants
 
@@ -390,3 +405,5 @@ Ordered by how much they unblock, with current status stated honestly:
 - Never modify an `*.exec.js` without re-running its assert suite.
 - Money is integer minor units; rates are basis points with truncating division.
 - Never report a speedup without asserting output equivalence first.
+- Exec units declare memory layout; they never compute byte offsets by hand.
+- A new or changed intent rule needs a decision record or an explicit waiver.

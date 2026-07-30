@@ -3,6 +3,8 @@
  * DO NOT HAND-EDIT. DO NOT REFORMAT FOR READABILITY. Regenerate from the intent.
  * Verified by tests/payment-processor.assert.js */
 
+const { defineArena } = require('../runtime/arena.js');
+
 const STATUS_PENDING = 0;
 const STATUS_SETTLED = 1;
 const STATUS_INVALID_AMOUNT = 2;
@@ -29,43 +31,41 @@ const LIMIT_MAX_CURRENCY_CODE = 2;
 
 const FLAG_PRIORITY = 1;
 
-/* arena byte offsets: f64 region first, then 4B region, then 1B region.
- * every 4B view lands on an 8B-aligned base, so no unaligned view construction. */
+/* Memory layout is DECLARED, not hand-computed. The runtime owns offset
+ * arithmetic, alignment, and the single-hidden-class guarantee; this file only
+ * says what fields exist. Layout order is derived (widest element first), so the
+ * declaration order below is free to read in domain order.
+ * See decisions/0006-schema-driven-arena-runtime.md. */
+const LEDGER = defineArena({
+  name: 'ledger',
+  dims: ['capacity', 'accountCount'],
+  fields: [
+    ['stats', 'f64', STAT_SLOTS],
+    ['balances', 'f64', 'accountCount'],
+    ['ids', 'u32', 'capacity'],
+    ['accounts', 'u32', 'capacity'],
+    ['amounts', 'i32', 'capacity'],
+    ['fees', 'i32', 'capacity'],
+    ['currencies', 'u8', 'capacity'],
+    ['flags', 'u8', 'capacity'],
+    ['statuses', 'u8', 'capacity']
+  ],
+  /* balances are the caller's to seed and must survive a reset */
+  clearOnReset: ['stats', 'fees', 'statuses']
+});
+
 function allocLedger(capacity, accountCount) {
-  const oStats = 0;
-  const oBalances = oStats + (STAT_SLOTS << 3);
-  const oIds = oBalances + (accountCount << 3);
-  const oAccounts = oIds + (capacity << 2);
-  const oAmounts = oAccounts + (capacity << 2);
-  const oFees = oAmounts + (capacity << 2);
-  const oCurrencies = oFees + (capacity << 2);
-  const oFlags = oCurrencies + capacity;
-  const oStatuses = oFlags + capacity;
-  const bytes = (oStatuses + capacity + 7) & ~7;
-  const arena = new SharedArrayBuffer(bytes);
-  return {
-    arena: arena,
-    byteLength: bytes,
-    capacity: capacity,
-    accountCount: accountCount,
-    stats: new Float64Array(arena, oStats, STAT_SLOTS),
-    balances: new Float64Array(arena, oBalances, accountCount),
-    ids: new Uint32Array(arena, oIds, capacity),
-    accounts: new Uint32Array(arena, oAccounts, capacity),
-    amounts: new Int32Array(arena, oAmounts, capacity),
-    fees: new Int32Array(arena, oFees, capacity),
-    currencies: new Uint8Array(arena, oCurrencies, capacity),
-    flags: new Uint8Array(arena, oFlags, capacity),
-    statuses: new Uint8Array(arena, oStatuses, capacity)
-  };
+  return LEDGER.alloc(capacity, accountCount);
+}
+
+/* rebuilds views over an arena allocated elsewhere — the zero-copy path for
+ * worker_threads. No backing store is allocated. */
+function attachLedger(arena, capacity, accountCount) {
+  return LEDGER.attach(arena, capacity, accountCount);
 }
 
 /* zeroes everything the hot procedure writes. balances are the caller's to seed. */
-function resetLedger(L) {
-  L.stats.fill(0);
-  L.fees.fill(0);
-  L.statuses.fill(0);
-}
+const resetLedger = LEDGER.reset;
 
 /* R3 reference implementation. Hand-inlined at the call site below; exported so
  * the assert suite can differential-test the inlined copy against it. */
@@ -159,7 +159,9 @@ module.exports = {
   LIMIT_MIN_FEE: LIMIT_MIN_FEE,
   LIMIT_MAX_CURRENCY_CODE: LIMIT_MAX_CURRENCY_CODE,
   FLAG_PRIORITY: FLAG_PRIORITY,
+  LEDGER: LEDGER,
   allocLedger: allocLedger,
+  attachLedger: attachLedger,
   resetLedger: resetLedger,
   computeFee: computeFee,
   processBatch: processBatch
