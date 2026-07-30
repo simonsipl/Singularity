@@ -77,6 +77,8 @@ hot enough to repay the tax.
 
 Everything is reproducible from a clean clone: `npm run check`, `npm run bench:matrix`.
 
+**Analysis of the hypotheses behind this — including where the evidence contradicted them — is in [RESEARCH.md](RESEARCH.md).**
+
 ---
 
 ## Table of contents
@@ -501,6 +503,7 @@ Ordered by how much they unblock, with current status stated honestly:
 | [`.cursorrules`](.cursorrules) | Compiler ruleset — normative |
 | [`CLAUDE.md`](CLAUDE.md) | Entry point for agents |
 | [`docs/STRUCTURE.md`](docs/STRUCTURE.md) | **Why there are two trees** — read this first |
+| [`RESEARCH.md`](RESEARCH.md) | Hypothesis analysis: what the experiment showed, incl. contradictions |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision-record format and workflow |
 | [`bin/singularity.js`](bin/singularity.js) | CLI — the enforcement surface |
 | [`features/payments/`](features/payments/) | Feature: money movement (`bulk-settlement`) |
