@@ -7,8 +7,11 @@
  * the same reason drift checking exists for intents.
  *
  * Deliberately NOT synced: CLAUDE.md, package.json, README.md, docs/*, the
- * decisions/0006 copy, and features/_example/* — those are generalised for a
- * fresh project and are expected to differ. */
+ * decisions/0006 copy, features/_example/*, and .gitignore — those are
+ * generalised for a fresh project and are expected to differ. (.gitignore
+ * diverges legitimately: this repo ignores its own private notes, which is
+ * meaningless in a bootstrap kit. It is checked for existence and for the
+ * entries every project needs, not for byte equality.) */
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -27,7 +30,6 @@ function check(name, fn) {
 const SYNCED = [
   ['.cursorrules', 'framework/.cursorrules'],
   ['.gitattributes', 'framework/.gitattributes'],
-  ['.gitignore', 'framework/.gitignore'],
   ['bin/singularity.js', 'framework/bin/singularity.js'],
   ['src/runtime/arena.js', 'framework/src/runtime/arena.js'],
   ['src/runtime/ingest.js', 'framework/src/runtime/ingest.js'],
@@ -48,6 +50,16 @@ for (let i = 0, n = SYNCED.length; i < n; i++) {
       'kit copy has drifted from the live file — re-copy ' + live + ' into framework/');
   });
 }
+
+check('kit .gitignore exists and covers what every project needs', function () {
+  const src = fs.readFileSync(path.join(ROOT, 'framework/.gitignore'), 'utf8');
+  const required = ['node_modules', 'dist', '*.heapsnapshot', '*.cpuprofile',
+    'isolate-*.log', 'v8.log'];
+  for (let i = 0, n = required.length; i < n; i++) {
+    assert.ok(src.indexOf(required[i]) !== -1,
+      'kit .gitignore is missing "' + required[i] + '"');
+  }
+});
 
 check('kit ships the files a fresh project cannot run without', function () {
   const required = [
