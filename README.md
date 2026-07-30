@@ -3,11 +3,11 @@
 **An AI-native backend framework.** Humans write declarative intent contracts. A model compiles them into strictly procedural, TypedArray-backed execution units tuned for V8's optimizing tier. The generated code is unreadable by design; the contract and the generated test suite are what you maintain.
 
 ```
-src/intents/<name>.intent.ts   →  [AI compiler]  →  src/exec/<name>.exec.js
-        (you write this)          (.cursorrules)   +  tests/<name>.assert.js
+features/<feature>/<workflow>.intent.ts  →  [AI compiler]  →  src/exec/<workflow>.exec.js
+             (you write this)               (.cursorrules)  +  features/<feature>/<workflow>.assert.js
 ```
 
-The reference module is a bulk payment processor. It ships with a 26-rule contract, a 33-check loopback suite, and a 1M-record benchmark against an idiomatic implementation.
+Two reference workflows ship: `payments/bulk-settlement` (26 rules, 33 checks) and `clients/visit-profiling` (43 rules, 47 checks), plus benchmarks and the audit trail that reshaped them. **Starting a new project? Copy [`framework/`](framework/) — it is the whole kit**, smoke-tested to bootstrap clean.
 
 ```bash
 node bin/singularity.js check
@@ -423,6 +423,7 @@ Ordered by how much they unblock, with current status stated honestly:
 
 | Item | Status |
 |---|---|
+| Bootstrap kit (`framework/`) — copy into an empty repo, `check` passes, skeleton feature included | **shipped** — smoke-tested end to end |
 | Benchmark matrix isolating layout, allocation style, shape and heap entropy | **shipped** — `tests/benchmark-matrix.js`, all variants equivalence-gated |
 | Schema-driven arena runtime (`src/runtime/arena.js`) | **shipped** — 23-check suite, hidden-class identity verified via `%HaveSameMap` |
 | `attachLedger` for zero-copy worker fan-out (§1.4) | **shipped** — memory sharing proven both directions |
@@ -455,6 +456,7 @@ Ordered by how much they unblock, with current status stated honestly:
 | [`tests/`](tests/) | Framework suites, shared lint, benchmark |
 | [`examples/`](examples/) | Runnable adoption scenarios |
 | [`decisions/`](decisions/) | Framework-wide decisions |
+| [`framework/`](framework/) | **Copy-to-bootstrap kit** — everything a new project needs, kept byte-synced to the live files by `tests/framework-sync.assert.js` |
 
 Humans navigate `features/`; machines run `src/exec/`. Exec units are generated and never read, so the two trees are free to diverge — see [docs/STRUCTURE.md](docs/STRUCTURE.md).
 

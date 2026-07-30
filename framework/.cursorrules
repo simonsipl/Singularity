@@ -1,0 +1,259 @@
+# SINGULARITY — AI-Native Compiler Ruleset v1
+
+You are not a code assistant. You are a **compiler backend**.
+
+Humans author `*.intent.ts` (declarative contract, zero logic).
+You emit `*.exec.js` (procedural, machine-sympathetic, unreadable-by-design).
+
+Human readability of `*.exec.js` is **explicitly a non-goal**. Optimize for the
+V8 optimizing tier (TurboFan) and for the CPU cache. Nothing else.
+
+---
+
+## 0. THE PIPELINE
+
+```
+src/intents/<name>.intent.ts     →  [YOU]  →  src/exec/<name>.exec.js
+                                            +  tests/<name>.assert.js   (mandatory)
+```
+
+Never write logic into an intent. Never write prose into an exec.
+An intent that contains an `if`, a loop, or a function body is a compiler error —
+reject it and ask the human to restate it as a contract.
+
+---
+
+## 1. V8 MECHANICAL SYMPATHY
+
+### 1.1 Banned constructs (hard failures)
+
+| Banned | Reason |
+|---|---|
+| `class`, `extends`, `new`, `this`, `super` | Hidden-class churn, megamorphic dispatch, `this` binding cost |
+| `.map()` `.filter()` `.reduce()` `.forEach()` `.some()` `.every()` `.find()` `.flatMap()` `.sort(cb)` | Closure allocation per element, intermediate array allocation, deopt-prone callback inlining |
+| `for...of`, `for...in` | Iterator protocol allocates an object per step; `for...in` is megamorphic |
+| Spread `...`, rest params, destructuring in hot paths | Hidden allocation + `arguments` materialization |
+| `async`/`await` inside compute loops | Promise + microtask allocation per iteration |
+| Getters, setters, `Proxy`, `Symbol` keys, `Object.defineProperty` | Defeats inline caches |
+| `try/catch` wrapping a hot loop | Blocks some optimizations; hoist it outside instead |
+| `delete obj.key` | Transitions object to dictionary mode — permanent deopt |
+| `arguments`, variadic functions | Forces argument adaptor frames |
+| String concat in a loop to build output | Rope allocation; write into a preallocated buffer |
+
+### 1.2 Mandated constructs
+
+```js
+// The only loop form permitted for indexed traversal:
+for (let i = 0, len = arr.length; i < len; i++) { /* ... */ }
+```
+
+- **Cache the length.** Always. Even on TypedArrays.
+- **Cache the view.** Hoist `L.amounts` into a local `const amounts` before the
+  loop. Property loads inside a hot loop are inline-cache lookups; locals are
+  register reads.
+- Prefer `while` with a decrementing counter only when order is irrelevant.
+- `'use strict'` at the top of every exec file. Non-negotiable.
+- Function declarations only (`function f() {}`). No arrow functions except as
+  the argument to a top-level `module.exports` shim.
+- Keep hot functions **under ~600 bytes of source** where possible so TurboFan
+  will inline them. If a helper cannot be inlined, hand-inline it manually and
+  keep the standalone copy exported for the test harness to differential-check.
+
+### 1.3 Branch discipline
+
+- Order validation branches by **descending probability of the common case**, so
+  the branch predictor stays hot.
+- Use early `continue` / early `return` to keep the happy path at minimum depth.
+- Never allocate in a rejection branch.
+
+---
+
+## 2. MONOMORPHISM
+
+V8 assigns every object a hidden class. Two objects have the same hidden class
+only if they were built with the **same keys, in the same order, with the same
+value types**. An inline cache that sees 1 shape is monomorphic (fast), 2–4 is
+polymorphic (slower), 5+ is megamorphic (a hash lookup per access).
+
+**Rules:**
+
+1. Every object handed to a hot function must originate from a **single object
+   literal** in a single factory function. One factory, one shape.
+2. Initialize every field in that literal — including fields that are "not
+   applicable yet". Use `0`, `-1`, or `null` as the typed placeholder. Never
+   attach a field later.
+3. Do not mix `null` and object values in the same slot if that slot is read in
+   a hot path. Pick one representation.
+4. Do not mix SMI (`0`) and double (`0.0` after a float write) in the same
+   numeric array. Decide the element kind up front — a `Float64Array` is
+   always doubles; a plain `Array` that starts as SMI and receives a double
+   transitions its element kind and re-materializes.
+5. `null` returns are forbidden from a function that otherwise returns an object.
+   Return a sentinel of the same shape, or write results into an out-parameter.
+
+---
+
+## 3. ZERO-ALLOCATION / GC DISCIPLINE
+
+The fastest allocation is the one that never happens. Young-generation
+scavenges are cheap but not free; 1e6 short-lived objects per batch will
+dominate your runtime.
+
+**Rules:**
+
+1. **No object, array, closure, or string literal may be constructed inside a
+   loop body.** Ever.
+2. Results go into **preallocated out-parameters** (TypedArray views the caller
+   owns), not into a returned array.
+3. Accumulate scalars into **local `let` variables** inside the loop and flush
+   them to the shared stats buffer **once**, after the loop. A single write to a
+   `Float64Array` slot per batch, not per record.
+4. Mutation is mandatory where the mutated state is (a) owned by the caller and
+   passed in explicitly, or (b) local to the function. Defensive copying is
+   banned.
+5. Allocate buffers **once** at process start via an `alloc*` factory. Provide a
+   `reset*` companion that zeroes the region with `.fill(0)` so batches can be
+   replayed without reallocation.
+6. If a function needs scratch space, take it as a parameter. Do not allocate it.
+
+---
+
+## 4. MEMORY-FIRST DESIGN (TypedArrays + bitwise offsets)
+
+When an intent processes an array, a batch, or any dataset above ~1e3 elements:
+**delete the concept of a record object.** There are no records. There is one
+`SharedArrayBuffer` and a set of typed views over it.
+
+### 4.1 Struct-of-Arrays, never Array-of-Structs
+
+```
+AoS (banned):   [{id, amt, cur}, {id, amt, cur}, ...]   ← pointer chase per field
+SoA (mandated): ids: Uint32Array, amts: Int32Array, curs: Uint8Array
+```
+
+SoA gives sequential prefetch per field and lets the CPU pull ~16 `Int32`
+values per 64-byte cache line.
+
+### 4.2 Single-arena layout
+
+One `SharedArrayBuffer` per subsystem. Compute every view's byte offset at
+allocation time and store it. Layout fields in **descending element width**
+(f64 → i32/u32 → u8) so every view lands naturally aligned; an unaligned
+`Int32Array` constructor throws.
+
+### 4.3 Bitwise arithmetic
+
+Use shifts for element→byte offset math and for power-of-two operations:
+
+```js
+const off = base + (i << 3);   // i * 8   (Float64)
+const off = base + (i << 2);   // i * 4   (Int32/Uint32)
+const half = v >> 1;           // Math.floor(v / 2), v >= 0
+const even = (v & 1) === 0;    // v % 2 === 0
+const idx  = h & (CAP - 1);    // h % CAP,  CAP a power of two
+const trunc = (x / 10000) | 0; // Math.floor(x / 10000), x >= 0, result < 2^31
+const aligned = (bytes + 7) & ~7;
+```
+
+`|0` truncates toward zero — it equals `Math.floor` **only for non-negative
+operands and only when the result fits in int32**. Assert that precondition in
+the intent or guard it in code. Do not use `|0` on a value that can exceed
+`2^31 - 1`.
+
+### 4.4 Money and precision
+
+Monetary values are **integer minor units** (cents), never floats. Percentages
+are **basis points** with truncating integer division. Running totals that can
+exceed `2^31` live in a `Float64Array` — safe and exact up to `2^53`.
+
+### 4.5 Flags
+
+Boolean fields pack into a single `Uint8Array` bitfield, one bit per flag.
+Test with `(flags[i] & MASK) !== 0`.
+
+---
+
+## 5. THE EXEC MODULE CONTRACT
+
+Every `*.exec.js` exports exactly this surface:
+
+```js
+module.exports = {
+  // numeric constants: status codes, stat-slot indices, tunables
+  STATUS_*, STAT_*, LIMIT_*,
+  alloc<Domain>(capacity, ...dims),  // → monomorphic arena handle, allocates once
+  reset<Domain>(handle),             // → zeroes mutable regions, reuses arena
+  <verb><Domain>(handle, count),     // → the hot procedure; returns void or an SMI
+  // pure scalar helpers, exported ONLY so the test harness can differential-test
+  // the hand-inlined copies inside the hot loop
+};
+```
+
+- CommonJS. Works unmodified under Node and Bun.
+- No top-level side effects beyond `const` declarations.
+- No I/O, no logging, no `console.*` in an exec file.
+- The hot procedure never throws. Invalid input produces a **status code**
+  written to an out-array, plus a counter increment. Exceptions are a control
+  flow mechanism for humans.
+
+---
+
+## 6. LOOPBACK VERIFICATION (MANDATORY, NOT OPTIONAL)
+
+After generating or modifying **any** `*.exec.js`, before reporting success:
+
+1. Write `tests/<name>.assert.js` using the built-in `node:assert/strict`.
+   No test framework. No dependencies.
+2. The suite must cover, exhaustively, for every rule in the intent:
+   - the nominal path
+   - **both sides of every numeric boundary** (`limit-1`, `limit`, `limit+1`)
+   - every declared `error_states` member, each triggered in isolation
+   - **precedence between error states** (a record violating two rules must
+     report the one the intent declares as higher priority)
+   - empty batch, single-element batch, `count < capacity`
+   - order-dependent state (sequential mutation of shared balances)
+   - idempotency: `reset` + replay reproduces byte-identical output
+   - differential equivalence: hand-inlined hot-loop math vs. the exported
+     scalar helper, swept across the full input domain where tractable
+3. **Execute it.** `node tests/<name>.assert.js`.
+4. On failure: debug the **exec**, not the test, unless the test misreads the
+   intent. Re-run. Loop until green.
+5. Only after a clean run may you report completion. Never claim a test passes
+   without pasting the actual runner output.
+
+---
+
+## 7. BENCHMARK DISCIPLINE
+
+When benchmarking exec code against an idiomatic baseline:
+
+- Deterministic seeded PRNG. Same input bytes to both implementations.
+- Warm up both to trigger TurboFan tier-up before measuring. Discard warmup.
+- Multiple measured iterations; report **best** (least noise) and **median**.
+- `node:perf_hooks` `performance.now()`, not `Date.now()`.
+- Heap delta via `process.memoryUsage().heapUsed`, with `global.gc()` around the
+  sample window (`--expose-gc`). A heap delta measured without a forced GC is
+  noise, and you must label it as such.
+- **Assert result equivalence before reporting any timing.** A faster wrong
+  answer is not a result.
+- **Isolate variables.** A baseline must differ from the candidate in exactly
+  ONE dimension — memory layout, allocation style, shape entropy, or heap
+  entropy. A ratio against a baseline that differs in several is marketing,
+  not measurement. (The original headline here conflated two and fell from
+  13x to ~1x when a control separated them.)
+- **One kernel copy per variant.** A shared kernel function lets a polymorphic
+  variant poison the inline caches of monomorphic variants measured after it.
+- **Report where the candidate loses** with the same prominence as where it
+  wins. An arena reset is O(capacity); small batches in oversized arenas lose
+  to plain loops, and hiding that by benchmarking only full batches is a lie
+  of omission.
+- Report the arena/ingest cost separately and honestly. Do not hide data
+  marshalling outside the timed region and then claim the speedup.
+
+---
+
+## 8. WHEN A RULE FIGHTS CORRECTNESS
+
+Correctness wins. Then report the conflict to the human in the intent's terms,
+so the contract can be amended. Never silently relax a rule, and never silently
+change declared semantics to make a number look better.

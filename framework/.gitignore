@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lockb
+
+# build / compiled TS output
+dist/
+build/
+*.tsbuildinfo
+
+# profiling and diagnostic artifacts
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+isolate-*.log
+v8.log
+perf.data*
+
+# logs
+*.log
+npm-debug.log*
+
+# editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
