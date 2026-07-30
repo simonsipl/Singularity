@@ -1,7 +1,8 @@
 'use strict';
-/* SINGULARITY EXEC UNIT — compiled from src/intents/payment-processor.intent.ts
+/* SINGULARITY EXEC UNIT — compiled from features/payments/bulk-settlement.intent.ts
  * DO NOT HAND-EDIT. DO NOT REFORMAT FOR READABILITY. Regenerate from the intent.
- * Verified by tests/payment-processor.assert.js */
+ * Verified by features/payments/bulk-settlement.assert.js
+ * intent-sha256: e7949f18fcec38d97ddb8c4091643ad0b6b68992bf33fcacebca59269d63f0b7 */
 
 const { defineArena } = require('../runtime/arena.js');
 

@@ -1,9 +1,10 @@
 ---
 id: 0013
-title: Rules in client-profiler that need no rationale
+title: Rules in visit-profiling that need no rationale
 status: accepted
 date: 2026-07-30
-module: client-profiler
+feature: clients
+workflow: visit-profiling
 waives:
   - pipeline.stages
   - pipeline.replayable

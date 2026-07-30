@@ -1,7 +1,8 @@
 'use strict';
-/* SINGULARITY EXEC UNIT — compiled from src/intents/client-profiler.intent.ts
+/* SINGULARITY EXEC UNIT — compiled from features/clients/visit-profiling.intent.ts
  * DO NOT HAND-EDIT. DO NOT REFORMAT FOR READABILITY. Regenerate from the intent.
- * Verified by tests/client-profiler.assert.js */
+ * Verified by features/clients/visit-profiling.assert.js
+ * intent-sha256: 777b755374b4923682e9aa5361642e785daf23a540d682ec3dd5f13f811ab148 */
 
 const { defineArena } = require('../runtime/arena.js');
 

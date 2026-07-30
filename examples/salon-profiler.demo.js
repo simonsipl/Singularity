@@ -14,7 +14,7 @@
  */
 
 const { performance } = require('node:perf_hooks');
-const X = require('../src/exec/client-profiler.exec.js');
+const X = require('../src/exec/visit-profiling.exec.js');
 
 const CLIENTS = 50000;
 const VISITS = 600000;

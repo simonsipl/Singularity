@@ -3,7 +3,8 @@ id: 0005
 title: The hot procedure never throws; failures are status codes
 status: accepted
 date: 2026-07-30
-module: payment-processor
+feature: payments
+workflow: bulk-settlement
 rules:
   - exec.no_throw
   - aggregate.counters

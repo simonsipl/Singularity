@@ -19,15 +19,22 @@ A concrete example from the reference module. The fee pipeline applies the FX
 surcharge *before* the priority surcharge. That ordering is worth 38 cents on a
 50,000-cent EUR priority payment. Both orderings look correct in the source. The
 only reason it is discoverable is a test that happened to assert the number, and
-the only reason it is *justified* is [0002](../decisions/0002-fee-stage-ordering.md).
+the only reason it is *justified* is [0002](../features/payments/decisions/0002-fee-stage-ordering.md).
 
 Without that record, the first engineer to "tidy up" four independent-looking
 conditionals silently changes what customers are billed.
 
 ## Format
 
-One file per decision, `decisions/NNNN-kebab-title.md`, frontmatter plus prose.
-Copy [`_template.md`](../decisions/_template.md).
+One file per decision. Records live with the feature they belong to:
+
+```
+features/<feature>/decisions/NNNN-kebab-title.md   <- feature-scoped
+decisions/NNNN-kebab-title.md                     <- framework-wide
+```
+
+Ids are globally unique across both, so `[[0002]]` resolves from anywhere and the
+CLI detects collisions. Copy [`_template.md`](../decisions/_template.md).
 
 ```yaml
 ---
@@ -35,7 +42,9 @@ id: 0002                      # unique, zero-padded, never reused
 title: Short imperative statement
 status: accepted              # proposed | accepted | superseded
 date: 2026-07-30
-module: payment-processor     # which intent this belongs to
+feature: payments             # human-navigable grouping
+workflow: bulk-settlement     # which intent this belongs to
+#  for a framework-wide record use `scope: framework` instead
 rules:                        # intent rule keys this decision explains
   - fee.order
   - fee.2_fx
@@ -52,7 +61,7 @@ rejected**, **Notes**. Cross-reference other records with `[[0002]]`.
 Two rules about content:
 
 - **Consequences must include the unpleasant ones.** A record listing only
-  upsides is marketing. [0003](../decisions/0003-insufficient-funds-reports-fee.md)
+  upsides is marketing. [0003](../features/payments/decisions/0003-insufficient-funds-reports-fee.md)
   names its own footgun: the fees array is not a record of money moved, and
   summing it overstates revenue.
 - **"We didn't consider alternatives" is a valid entry.** It is more honest than
@@ -69,7 +78,8 @@ node bin/singularity.js decisions
 
 ```
 decisions  (does every intent rule have recorded rationale?)
-  payment-processor  26 rules: 26 documented, 0 waived, 0 undocumented
+  clients/visit-profiling   43 rules: 30 documented, 13 waived, 0 undocumented
+  payments/bulk-settlement  26 rules: 26 documented, 0 waived, 0 undocumented
 ```
 
 This gives three enforcement properties that a `docs/` folder does not:
@@ -137,12 +147,20 @@ rule whose rationale was just withdrawn genuinely needs a new one.
 
 ## Current records
 
+Run `node bin/singularity.js map` for the live index. Snapshot:
+
 | id | title | status |
 |---|---|---|
-| [0001](../decisions/0001-money-as-integer-minor-units.md) | Money is integer minor units, never a float | accepted |
-| [0002](../decisions/0002-fee-stage-ordering.md) | FX surcharge applies before the priority surcharge | accepted |
-| [0003](../decisions/0003-insufficient-funds-reports-fee.md) | A rejected-for-funds payment reports its fee but is not charged | accepted |
-| [0004](../decisions/0004-validation-precedence.md) | Validation short-circuits in a fixed declared order | accepted |
-| [0005](../decisions/0005-status-codes-not-exceptions.md) | The hot procedure never throws; failures are status codes | accepted |
+| [0001](../features/payments/decisions/0001-money-as-integer-minor-units.md) | Money is integer minor units, never a float | accepted |
+| [0002](../features/payments/decisions/0002-fee-stage-ordering.md) | FX surcharge applies before the priority surcharge | accepted |
+| [0003](../features/payments/decisions/0003-insufficient-funds-reports-fee.md) | A rejected-for-funds payment reports its fee but is not charged | accepted |
+| [0004](../features/payments/decisions/0004-validation-precedence.md) | Validation short-circuits in a fixed declared order | accepted |
+| [0005](../features/payments/decisions/0005-status-codes-not-exceptions.md) | The hot procedure never throws; failures are status codes | accepted |
 | [0006](../decisions/0006-schema-driven-arena-runtime.md) | Arena layout is declared and generated, not hand-written | accepted |
-| [0007](../decisions/0007-fee-clamp-order.md) | The fee ceiling is applied before the floor | accepted |
+| [0007](../features/payments/decisions/0007-fee-clamp-order.md) | The fee ceiling is applied before the floor | accepted |
+| [0008](../features/clients/decisions/0008-no-show-semantics.md) | A no-show is not a visit | accepted |
+| [0009](../features/clients/decisions/0009-open-addressed-dedupe.md) | Open-addressed phone de-duplication | accepted |
+| [0010](../features/clients/decisions/0010-segmentation-branch-order.md) | Lapsed outranks VIP | accepted |
+| [0011](../features/clients/decisions/0011-no-pii-in-the-arena.md) | No personal data in the arena | accepted |
+| [0012](../features/clients/decisions/0012-profiler-input-validation.md) | Spend bounds and validation order | accepted |
+| [0013](../features/clients/decisions/0013-profiler-waivers.md) | Waivers for visit-profiling | accepted |

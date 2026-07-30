@@ -3,7 +3,8 @@ id: 0001
 title: Money is integer minor units, never a float
 status: accepted
 date: 2026-07-30
-module: payment-processor
+feature: payments
+workflow: bulk-settlement
 rules:
   - fee.rounding
   - balance.debit_total

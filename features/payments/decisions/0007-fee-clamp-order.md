@@ -3,7 +3,8 @@ id: 0007
 title: The fee ceiling is applied before the floor
 status: accepted
 date: 2026-07-30
-module: payment-processor
+feature: payments
+workflow: bulk-settlement
 rules:
   - fee.4_ceiling
   - fee.5_floor

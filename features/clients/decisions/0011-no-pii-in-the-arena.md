@@ -3,7 +3,8 @@ id: 0011
 title: The arena holds no personal data, only shapes and opaque hashes
 status: accepted
 date: 2026-07-30
-module: client-profiler
+feature: clients
+workflow: visit-profiling
 rules:
   - exec.no_pii
 verified_by:

@@ -3,7 +3,8 @@ id: 0002
 title: FX surcharge applies before the priority surcharge
 status: accepted
 date: 2026-07-30
-module: payment-processor
+feature: payments
+workflow: bulk-settlement
 rules:
   - fee.order
   - fee.1_tier

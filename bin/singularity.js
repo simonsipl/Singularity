@@ -2,15 +2,32 @@
 'use strict';
 /* SINGULARITY CLI
  *
- * The framework's enforcement surface. Everything here is mechanical: no
- * command asks you to trust a claim it has not checked.
+ * The framework's enforcement surface. Everything here is mechanical: no command
+ * asks you to trust a claim it has not checked.
  *
- *   singularity verify      run every tests/*.assert.js suite
- *   singularity drift       fail if an intent is newer than its exec unit
- *   singularity decisions   report which intent rules have recorded rationale
- *   singularity layout <m>  print a module's arena layout, byte by byte
- *   singularity bench       run the benchmarks
- *   singularity check       drift + verify + decisions, the pre-commit gate
+ *   singularity map           the human view: features -> workflows -> decisions
+ *   singularity verify        run every assert suite
+ *   singularity drift         fail if an intent is newer than its exec unit
+ *   singularity decisions     report which rules have recorded rationale
+ *   singularity layout <wf>   print a workflow's arena layout, byte by byte
+ *   singularity bench         run the benchmarks
+ *   singularity check         drift + verify + decisions, the pre-commit gate
+ *
+ * TWO STRUCTURES, ONE SYSTEM
+ *
+ *   features/<feature>/<workflow>.intent.ts   <- humans navigate here
+ *   features/<feature>/<workflow>.assert.js
+ *   features/<feature>/decisions/*.md
+ *
+ *   src/exec/<workflow>.exec.js               <- machines run this, flat
+ *   src/runtime/arena.js
+ *
+ * The exec tree is deliberately NOT organised by feature. Directory layout has
+ * no effect on runtime performance — files do not make V8 faster. What actually
+ * varies on the machine side is which exec units share an arena and which get
+ * bundled into one process, and those are manifest concerns, not directory
+ * concerns. Since exec units are generated and never read by a human, the two
+ * structures are free to diverge, and each is optimised for its own reader.
  *
  * Zero dependencies. Exit code 0 means the repo is in a state you can commit.
  */
@@ -20,10 +37,10 @@ const path = require('node:path');
 const cp = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const INTENTS = path.join(ROOT, 'src', 'intents');
+const FEATURES = path.join(ROOT, 'features');
 const EXECS = path.join(ROOT, 'src', 'exec');
 const TESTS = path.join(ROOT, 'tests');
-const DECISIONS = path.join(ROOT, 'decisions');
+const FRAMEWORK_DECISIONS = path.join(ROOT, 'decisions');
 
 /* colour only when attached to a terminal, so CI logs stay clean */
 const TTY = process.stdout.isTTY === true;
@@ -47,31 +64,63 @@ function listFiles(dir, suffix) {
   return hit;
 }
 
-/* ---- module discovery --------------------------------------------------- */
-
-function modules() {
-  const intents = listFiles(INTENTS, '.intent.ts');
-  const mods = [];
-  for (let i = 0, n = intents.length; i < n; i++) {
-    const name = intents[i].slice(0, -'.intent.ts'.length);
-    mods.push({
-      name: name,
-      intent: path.join(INTENTS, intents[i]),
-      exec: path.join(EXECS, name + '.exec.js'),
-      assert: path.join(TESTS, name + '.assert.js')
-    });
+function listDirs(dir) {
+  if (!fs.existsSync(dir)) return [];
+  const all = fs.readdirSync(dir);
+  const hit = [];
+  for (let i = 0, n = all.length; i < n; i++) {
+    if (all[i][0] === '_' || all[i][0] === '.') continue;
+    if (fs.statSync(path.join(dir, all[i])).isDirectory()) hit.push(all[i]);
   }
-  return mods;
+  hit.sort();
+  return hit;
 }
 
-/* ---- intent rule extraction --------------------------------------------
- * Rules are declared as "key: prose" strings inside the `rules: [ ... ]` block.
- * The key is the stable identifier a decision record points at. */
+/* ---- discovery: the human tree ----------------------------------------- */
+
+function features() {
+  const names = listDirs(FEATURES);
+  const feats = [];
+  for (let i = 0, n = names.length; i < n; i++) {
+    const dir = path.join(FEATURES, names[i]);
+    const intents = listFiles(dir, '.intent.ts');
+    const workflows = [];
+    for (let k = 0, kn = intents.length; k < kn; k++) {
+      const wf = intents[k].slice(0, -'.intent.ts'.length);
+      workflows.push({
+        name: wf,
+        feature: names[i],
+        intent: path.join(dir, intents[k]),
+        assert: path.join(dir, wf + '.assert.js'),
+        exec: path.join(EXECS, wf + '.exec.js')
+      });
+    }
+    feats.push({
+      name: names[i],
+      dir: dir,
+      readme: path.join(dir, 'feature.md'),
+      decisionsDir: path.join(dir, 'decisions'),
+      workflows: workflows
+    });
+  }
+  return feats;
+}
+
+function allWorkflows() {
+  const feats = features();
+  const out = [];
+  for (let i = 0, n = feats.length; i < n; i++) {
+    for (let k = 0, kn = feats[i].workflows.length; k < kn; k++) out.push(feats[i].workflows[k]);
+  }
+  return out;
+}
+
+/* ---- intent rule extraction -------------------------------------------- */
+
 function intentRules(file) {
   const src = fs.readFileSync(file, 'utf8');
   const start = src.indexOf('rules: [');
   if (start === -1) return [];
-  /* walk to the matching close bracket */
   let depth = 0, i = src.indexOf('[', start), end = -1;
   for (let n = src.length; i < n; i++) {
     if (src[i] === '[') depth++;
@@ -93,10 +142,9 @@ function intentRules(file) {
 }
 
 /* ---- decision records --------------------------------------------------
- * Minimal frontmatter parser: `key: value` and `key:` followed by `- item`
- * lines. Deliberately not a YAML implementation — the format is fixed and
- * documented in docs/DECISIONS.md, and a dependency-free parser keeps the CLI
- * runnable in a bare container. */
+ * Minimal frontmatter parser. Deliberately not YAML — the format is fixed and
+ * documented in docs/DECISIONS.md, and no dependency keeps the CLI runnable in
+ * a bare container. */
 function parseFrontmatter(src, file) {
   if (src.slice(0, 4) !== '---\n' && src.slice(0, 5) !== '---\r\n') {
     throw new Error(file + ': missing --- frontmatter block');
@@ -129,92 +177,140 @@ function parseFrontmatter(src, file) {
   return meta;
 }
 
-function decisions() {
-  const files = listFiles(DECISIONS, '.md');
+function readDecisionsFrom(dir, owner) {
+  const files = listFiles(dir, '.md');
   const recs = [];
   for (let i = 0, n = files.length; i < n; i++) {
-    if (files[i][0] === '_') continue; /* _template.md and friends */
-    const file = path.join(DECISIONS, files[i]);
+    if (files[i][0] === '_') continue;
+    const file = path.join(dir, files[i]);
     const meta = parseFrontmatter(fs.readFileSync(file, 'utf8'), files[i]);
-    recs.push({ file: files[i], meta: meta });
+    recs.push({ file: files[i], dir: dir, owner: owner, meta: meta });
   }
   return recs;
 }
 
-/* ---- commands ----------------------------------------------------------- */
+/* every decision in the repo: framework-wide plus one folder per feature */
+function decisions() {
+  let recs = readDecisionsFrom(FRAMEWORK_DECISIONS, '(framework)');
+  const feats = features();
+  for (let i = 0, n = feats.length; i < n; i++) {
+    recs = recs.concat(readDecisionsFrom(feats[i].decisionsDir, feats[i].name));
+  }
+  return recs;
+}
+
+/* ---- commands ---------------------------------------------------------- */
+
+/* Content hash of the intent, newline-normalised so the stamp survives a
+ * checkout on a different platform. */
+function intentStamp(file) {
+  const raw = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+  return require('node:crypto').createHash('sha256').update(raw, 'utf8').digest('hex');
+}
 
 function cmdDrift() {
-  head('drift  (is any exec unit older than the intent it was compiled from?)');
-  const mods = modules();
+  head('drift  (was every exec unit compiled from the intent as it stands now?)');
+  const wfs = allWorkflows();
   let failed = 0;
-  for (let i = 0, n = mods.length; i < n; i++) {
-    const m = mods[i];
-    if (!fs.existsSync(m.exec)) {
-      bad(m.name + ': no exec unit — intent has never been compiled');
+  for (let i = 0, n = wfs.length; i < n; i++) {
+    const w = wfs[i];
+    const label = w.feature + '/' + w.name;
+    if (!fs.existsSync(w.exec)) {
+      bad(label + ': no exec unit — intent has never been compiled');
       failed++;
       continue;
     }
-    const iT = fs.statSync(m.intent).mtimeMs;
-    const eT = fs.statSync(m.exec).mtimeMs;
-    if (iT > eT) {
-      bad(m.name + ': intent is NEWER than exec — recompile before committing');
+    if (!fs.existsSync(w.assert)) {
+      bad(label + ': exec unit has no assert suite alongside the intent');
       failed++;
-    } else if (!fs.existsSync(m.assert)) {
-      bad(m.name + ': exec unit has no assert suite');
+      continue;
+    }
+    /* Content stamp, NOT mtime. mtime does not survive `git clone` — every file
+     * gets checkout time — so an mtime comparison silently passes on a fresh CI
+     * checkout no matter how stale the exec is. The stamp is written into the
+     * exec header at compile time and compared here. */
+    const src = fs.readFileSync(w.exec, 'utf8');
+    const m = src.match(/intent-sha256:\s*([0-9a-f]{64})/);
+    if (m === null) {
+      bad(label + ': exec has no `intent-sha256` stamp in its header — recompile');
+      failed++;
+      continue;
+    }
+    const actual = intentStamp(w.intent);
+    if (m[1] !== actual) {
+      bad(label + ': intent has changed since the exec was compiled' +
+        '\n        stamped ' + m[1].slice(0, 16) + '...  actual ' + actual.slice(0, 16) + '...');
       failed++;
     } else {
-      ok(m.name);
+      ok(label + '  ' + DIM + actual.slice(0, 12) + RESET);
     }
   }
-  if (mods.length === 0) warn('no intents found under src/intents/');
+  if (wfs.length === 0) warn('no workflows found under features/');
   return failed;
 }
 
-function cmdVerify() {
-  head('verify  (every tests/*.assert.js suite)');
-  const suites = listFiles(TESTS, '.assert.js');
-  let failed = 0;
-  for (let i = 0, n = suites.length; i < n; i++) {
-    const file = path.join(TESTS, suites[i]);
-    /* --allow-natives-syntax lets suites verify hidden-class claims directly;
-     * suites that do not use it are unaffected. */
-    const r = cp.spawnSync(process.execPath, ['--allow-natives-syntax', file],
-      { encoding: 'utf8' });
-    const text = (r.stdout || '') + (r.stderr || '');
-    const m = text.match(/(\d+) checks passed/);
-    if (r.status === 0 && m !== null) {
-      ok(suites[i] + '  ' + DIM + m[1] + ' checks' + RESET);
-    } else {
-      bad(suites[i]);
-      out(text.split(/\r?\n/).slice(-14).join('\n'));
-      failed++;
-    }
+function runSuite(file, label, state) {
+  /* --allow-natives-syntax lets suites verify hidden-class claims directly;
+   * suites that do not use it are unaffected. */
+  const r = cp.spawnSync(process.execPath, ['--allow-natives-syntax', file], { encoding: 'utf8' });
+  const text = (r.stdout || '') + (r.stderr || '');
+  const m = text.match(/(\d+) checks passed/);
+  if (r.status === 0 && m !== null) {
+    ok(label + '  ' + DIM + m[1] + ' checks' + RESET);
+    state.checks += Number(m[1]);
+    return 0;
   }
-  if (suites.length === 0) warn('no assert suites found under tests/');
+  bad(label);
+  out(text.split(/\r?\n/).slice(-14).join('\n'));
+  return 1;
+}
+
+function cmdVerify() {
+  head('verify  (every assert suite)');
+  const state = { checks: 0 };
+  let failed = 0, suites = 0;
+
+  const framework = listFiles(TESTS, '.assert.js');
+  for (let i = 0, n = framework.length; i < n; i++) {
+    failed += runSuite(path.join(TESTS, framework[i]), 'framework  ' + framework[i], state);
+    suites++;
+  }
+  const wfs = allWorkflows();
+  for (let i = 0, n = wfs.length; i < n; i++) {
+    if (!fs.existsSync(wfs[i].assert)) continue;
+    failed += runSuite(wfs[i].assert, wfs[i].feature + '/' + wfs[i].name, state);
+    suites++;
+  }
+  if (suites === 0) warn('no assert suites found');
+  else out('  ' + DIM + state.checks + ' checks across ' + suites + ' suites' + RESET);
   return failed;
 }
 
 function cmdDecisions() {
-  head('decisions  (does every intent rule have recorded rationale?)');
+  head('decisions  (does every rule have recorded rationale?)');
 
   let recs;
   try { recs = decisions(); }
   catch (e) { bad(e.message); return 1; }
 
-  /* rule key -> [decision ids], plus explicit waivers */
   const covered = Object.create(null);
   const waived = Object.create(null);
   const ids = Object.create(null);
   let failed = 0;
 
+  const REQUIRED = ['id', 'title', 'status'];
   for (let i = 0, n = recs.length; i < n; i++) {
     const r = recs[i], meta = r.meta;
-    for (let f = 0, fn = ['id', 'title', 'status', 'module'].length; f < fn; f++) {
-      const need = ['id', 'title', 'status', 'module'][f];
-      if (meta[need] === undefined) {
-        bad(r.file + ': frontmatter is missing `' + need + '`');
+    for (let f = 0, fn = REQUIRED.length; f < fn; f++) {
+      if (meta[REQUIRED[f]] === undefined) {
+        bad(r.file + ': frontmatter is missing `' + REQUIRED[f] + '`');
         failed++;
       }
+    }
+    /* a record must say what it belongs to: a feature/workflow, or the framework */
+    if (meta.workflow === undefined && meta.scope === undefined) {
+      bad(r.file + ': needs either `workflow:` or `scope: framework`');
+      failed++;
     }
     if (ids[meta.id] !== undefined) {
       bad(r.file + ': duplicate decision id ' + meta.id + ' (also ' + ids[meta.id] + ')');
@@ -236,66 +332,105 @@ function cmdDecisions() {
     for (let k = 0, kn = w.length; k < kn; k++) waived[w[k]] = meta.id;
   }
 
-  const mods = modules();
-  for (let i = 0, n = mods.length; i < n; i++) {
-    const m = mods[i];
-    const rules = intentRules(m.intent);
-    const known = Object.create(null);
-    const undoc = [];
-    let documented = 0, waivedCount = 0;
+  const known = Object.create(null);
+  const feats = features();
+  for (let i = 0, n = feats.length; i < n; i++) {
+    const f = feats[i];
+    for (let k = 0, kn = f.workflows.length; k < kn; k++) {
+      const w = f.workflows[k];
+      const rules = intentRules(w.intent);
+      const undoc = [];
+      let documented = 0, waivedCount = 0;
 
-    for (let k = 0, kn = rules.length; k < kn; k++) {
-      const key = rules[k].key;
-      known[key] = true;
-      if (covered[key] !== undefined) documented++;
-      else if (waived[key] !== undefined) waivedCount++;
-      else undoc.push(rules[k]);
-    }
-
-    out('  ' + BOLD + m.name + RESET + '  ' + rules.length + ' rules: ' +
-      GREEN + documented + ' documented' + RESET + ', ' +
-      DIM + waivedCount + ' waived' + RESET + ', ' +
-      (undoc.length > 0 ? YELLOW : GREEN) + undoc.length + ' undocumented' + RESET);
-
-    for (let k = 0, kn = undoc.length; k < kn; k++) {
-      warn('no rationale recorded for ' + BOLD + undoc[k].key + RESET);
-    }
-
-    /* A decision pointing at a rule key that no longer exists is a stale
-     * decision — usually the rule was renamed. This is the check that keeps the
-     * two sides from drifting silently. */
-    for (const key in covered) {
-      if (known[key] === undefined) {
-        const owners = covered[key].join(', ');
-        if (!ruleExistsInAnyModule(mods, key)) {
-          bad('decision ' + owners + ' references unknown rule `' + key +
-            '` — renamed or deleted?');
-          failed++;
-        }
+      for (let r = 0, rn = rules.length; r < rn; r++) {
+        const key = rules[r].key;
+        known[key] = true;
+        if (covered[key] !== undefined) documented++;
+        else if (waived[key] !== undefined) waivedCount++;
+        else undoc.push(rules[r]);
       }
+
+      out('  ' + BOLD + f.name + '/' + w.name + RESET + '  ' + rules.length + ' rules: ' +
+        GREEN + documented + ' documented' + RESET + ', ' +
+        DIM + waivedCount + ' waived' + RESET + ', ' +
+        (undoc.length > 0 ? YELLOW : GREEN) + undoc.length + ' undocumented' + RESET);
+      for (let u = 0, un = undoc.length; u < un; u++) {
+        warn('no rationale recorded for ' + BOLD + undoc[u].key + RESET);
+      }
+    }
+  }
+
+  /* A decision pointing at a rule key that no longer exists is stale — usually
+   * the rule was renamed. This is what stops the log from rotting silently. */
+  for (const key in covered) {
+    if (known[key] === undefined) {
+      bad('decision ' + covered[key].join(', ') + ' references unknown rule `' + key + '`' +
+        ' — renamed or deleted?');
+      failed++;
+    }
+  }
+  for (const key in waived) {
+    if (known[key] === undefined) {
+      bad('decision ' + waived[key] + ' waives unknown rule `' + key + '`' +
+        ' — renamed or deleted?');
+      failed++;
     }
   }
   return failed;
 }
 
-function ruleExistsInAnyModule(mods, key) {
-  for (let i = 0, n = mods.length; i < n; i++) {
-    const rules = intentRules(mods[i].intent);
-    for (let k = 0, kn = rules.length; k < kn; k++) {
-      if (rules[k].key === key) return true;
+function cmdMap() {
+  head('map  (the human view)');
+  let recs = [];
+  try { recs = decisions(); } catch (e) { bad(e.message); return 1; }
+
+  /* index decisions by owning workflow */
+  const byWorkflow = Object.create(null);
+  const frameworkRecs = [];
+  for (let i = 0, n = recs.length; i < n; i++) {
+    const wf = recs[i].meta.workflow;
+    if (wf === undefined) { frameworkRecs.push(recs[i]); continue; }
+    if (byWorkflow[wf] === undefined) byWorkflow[wf] = [];
+    byWorkflow[wf].push(recs[i]);
+  }
+
+  const feats = features();
+  for (let i = 0, n = feats.length; i < n; i++) {
+    const f = feats[i];
+    out('\n  ' + BOLD + f.name + RESET + DIM + '  features/' + f.name + '/' + RESET);
+    for (let k = 0, kn = f.workflows.length; k < kn; k++) {
+      const w = f.workflows[k];
+      const rules = intentRules(w.intent);
+      out('    ' + BOLD + w.name + RESET + '  ' + DIM + rules.length + ' rules -> src/exec/' +
+        w.name + '.exec.js' + RESET);
+      const ds = byWorkflow[w.name] === undefined ? [] : byWorkflow[w.name];
+      for (let d = 0, dn = ds.length; d < dn; d++) {
+        const meta = ds[d].meta;
+        const kind = meta.rules !== undefined && meta.rules.length > 0
+          ? String(meta.rules.length) + ' rules' : 'waivers';
+        out('      ' + DIM + meta.id + RESET + '  ' + meta.title +
+          '  ' + DIM + '(' + kind + ')' + RESET);
+      }
     }
   }
-  return false;
+  if (frameworkRecs.length > 0) {
+    out('\n  ' + BOLD + '(framework)' + RESET + DIM + '  decisions/' + RESET);
+    for (let i = 0, n = frameworkRecs.length; i < n; i++) {
+      out('      ' + DIM + frameworkRecs[i].meta.id + RESET + '  ' + frameworkRecs[i].meta.title);
+    }
+  }
+  out('\n  ' + DIM + 'machine view: src/exec/*.exec.js (flat, generated), src/runtime/arena.js' + RESET);
+  return 0;
 }
 
 function cmdLayout(name) {
-  const mods = modules();
+  const wfs = allWorkflows();
   let target = null;
-  for (let i = 0, n = mods.length; i < n; i++) if (mods[i].name === name) target = mods[i];
+  for (let i = 0, n = wfs.length; i < n; i++) if (wfs[i].name === name) target = wfs[i];
   if (target === null) {
     const names = [];
-    for (let i = 0, n = mods.length; i < n; i++) names.push(mods[i].name);
-    out('unknown module "' + name + '". known: ' + names.join(', '));
+    for (let i = 0, n = wfs.length; i < n; i++) names.push(wfs[i].name);
+    out('unknown workflow "' + name + '". known: ' + names.join(', '));
     return 1;
   }
   const mod = require(target.exec);
@@ -312,15 +447,13 @@ function cmdLayout(name) {
     for (let d = 0, dn = schema.dims.length; d < dn; d++) probe.push(d === 0 ? 1000 : 64);
     const d = schema.describe.apply(null, probe);
     const dimDesc = [];
-    for (let i = 0, n = schema.dims.length; i < n; i++) {
-      dimDesc.push(schema.dims[i] + '=' + probe[i]);
-    }
+    for (let i = 0, n = schema.dims.length; i < n; i++) dimDesc.push(schema.dims[i] + '=' + probe[i]);
     head('layout  ' + name + ' :: ' + d.name + '  (' + dimDesc.join(', ') + ')');
-    out('  ' + 'field'.padEnd(14) + 'type'.padEnd(6) + 'offset'.padStart(10) +
+    out('  ' + 'field'.padEnd(18) + 'type'.padEnd(6) + 'offset'.padStart(10) +
       'length'.padStart(10) + 'bytes'.padStart(12));
     for (let i = 0, n = d.fields.length; i < n; i++) {
       const f = d.fields[i];
-      out('  ' + f.field.padEnd(14) + f.type.padEnd(6) +
+      out('  ' + f.field.padEnd(18) + f.type.padEnd(6) +
         String(f.byteOffset).padStart(10) + String(f.length).padStart(10) +
         String(f.bytes).padStart(12));
     }
@@ -347,6 +480,7 @@ let failures = 0;
 if (cmd === 'verify') failures = cmdVerify();
 else if (cmd === 'drift') failures = cmdDrift();
 else if (cmd === 'decisions') failures = cmdDecisions();
+else if (cmd === 'map') failures = cmdMap();
 else if (cmd === 'layout') failures = cmdLayout(arg);
 else if (cmd === 'bench') failures = cmdBench();
 else if (cmd === 'check' || cmd === undefined) {
@@ -354,7 +488,7 @@ else if (cmd === 'check' || cmd === undefined) {
   failures += cmdVerify();
   failures += cmdDecisions();
 } else {
-  out('usage: singularity <verify|drift|decisions|layout <module>|bench|check>');
+  out('usage: singularity <map|verify|drift|decisions|layout <workflow>|bench|check>');
   process.exit(2);
 }
 

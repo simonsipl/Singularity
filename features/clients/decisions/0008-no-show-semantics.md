@@ -3,7 +3,8 @@ id: 0008
 title: A no-show is not a visit, and the no-show rate is measured over bookings
 status: accepted
 date: 2026-07-30
-module: client-profiler
+feature: clients
+workflow: visit-profiling
 rules:
   - visit.5_no_show
   - visit.count

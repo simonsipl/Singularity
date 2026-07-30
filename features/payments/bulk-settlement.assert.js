@@ -1,11 +1,11 @@
 'use strict';
 /* SINGULARITY LOOPBACK VERIFICATION
- * unit under test: src/exec/payment-processor.exec.js
- * contract:        src/intents/payment-processor.intent.ts
+ * unit under test: src/exec/bulk-settlement.exec.js
+ * contract:        features/payments/bulk-settlement.intent.ts
  * zero dependencies, node:assert/strict only. */
 
 const assert = require('node:assert/strict');
-const X = require('../src/exec/payment-processor.exec.js');
+const X = require('../../src/exec/bulk-settlement.exec.js');
 
 let passed = 0;
 function check(name, fn) {
@@ -504,8 +504,8 @@ check('ledger handle keeps one static shape across allocations', function () {
 
 check('exec source contains no banned constructs', function () {
   const fs = require('node:fs');
-  const lint = require('./_source-lint.js');
-  const src = fs.readFileSync(require.resolve('../src/exec/payment-processor.exec.js'), 'utf8');
+  const lint = require('../../tests/_source-lint.js');
+  const src = fs.readFileSync(require.resolve('../../src/exec/bulk-settlement.exec.js'), 'utf8');
   assert.ok(/^'use strict';/.test(src), "missing 'use strict'");
   lint.assertNoBannedConstructs(assert, src);
   lint.assertLoopBoundsCached(assert, src);
@@ -517,9 +517,9 @@ check('exec source contains no banned constructs', function () {
 
 check('exec delegates memory layout to the runtime rather than hand-rolling it', function () {
   const fs = require('node:fs');
-  const lint = require('./_source-lint.js');
+  const lint = require('../../tests/_source-lint.js');
   const code = lint.stripCommentsAndStrings(
-    fs.readFileSync(require.resolve('../src/exec/payment-processor.exec.js'), 'utf8'));
+    fs.readFileSync(require.resolve('../../src/exec/bulk-settlement.exec.js'), 'utf8'));
   assert.ok(/defineArena\(/.test(code), 'exec must declare its arena via defineArena');
   assert.equal(/new SharedArrayBuffer\(/.test(code), false,
     'exec must not allocate its own backing store — the runtime owns that');

@@ -3,7 +3,8 @@ id: 0012
 title: Spend has an upper bound, and validation order is declared
 status: accepted
 date: 2026-07-30
-module: client-profiler
+feature: clients
+workflow: visit-profiling
 rules:
   - client.validate_order
   - visit.validate_order

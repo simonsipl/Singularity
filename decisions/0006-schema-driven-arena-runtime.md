@@ -3,11 +3,12 @@ id: 0006
 title: Arena layout is declared and generated, not hand-written
 status: accepted
 date: 2026-07-30
-module: payment-processor
+scope: framework
 rules:
   - exec.soa
   - exec.zero_alloc
   - exec.reentrant
+  - exec.declared_layout
 verified_by:
   - "handles from one schema share a V8 hidden class (%HaveSameMap)"
   - "handles keep fast properties past the 20-field dictionary threshold"

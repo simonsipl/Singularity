@@ -1,7 +1,8 @@
 // ============================================================================
 // SINGULARITY INTENT CONTRACT
-// module: client-profiler
-// target: src/exec/client-profiler.exec.js
+// feature: clients
+// workflow: visit-profiling
+// target: src/exec/visit-profiling.exec.js
 //
 // DECLARATIVE ONLY. No execution logic, no function bodies, no control flow.
 //

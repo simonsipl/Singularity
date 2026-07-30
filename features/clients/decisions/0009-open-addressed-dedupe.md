@@ -3,7 +3,8 @@ id: 0009
 title: Phone de-duplication uses an open-addressed table inside the arena
 status: accepted
 date: 2026-07-30
-module: client-profiler
+feature: clients
+workflow: visit-profiling
 rules:
   - client.4_phone_unique
   - client.dedupe_first_wins

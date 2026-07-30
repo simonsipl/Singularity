@@ -3,7 +3,8 @@ id: 0003
 title: A rejected-for-funds payment reports its fee but is not charged
 status: accepted
 date: 2026-07-30
-module: payment-processor
+feature: payments
+workflow: bulk-settlement
 rules:
   - balance.reject_records_fee
   - balance.check

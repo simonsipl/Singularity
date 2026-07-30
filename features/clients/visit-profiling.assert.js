@@ -1,13 +1,13 @@
 'use strict';
 /* SINGULARITY LOOPBACK VERIFICATION
- * unit under test: src/exec/client-profiler.exec.js
- * contract:        src/intents/client-profiler.intent.ts
+ * unit under test: src/exec/visit-profiling.exec.js
+ * contract:        features/clients/visit-profiling.intent.ts
  *
  * Run with --allow-natives-syntax to include the hidden-class checks. */
 
 const assert = require('node:assert/strict');
-const lint = require('./_source-lint.js');
-const X = require('../src/exec/client-profiler.exec.js');
+const lint = require('../../tests/_source-lint.js');
+const X = require('../../src/exec/visit-profiling.exec.js');
 
 let passed = 0, skipped = 0;
 function check(name, fn) {
@@ -601,7 +601,7 @@ check('a full hash table cannot spin: probe is bounded', function () {
 
 check('exec source obeys the ruleset', function () {
   const fs = require('node:fs');
-  const src = fs.readFileSync(require.resolve('../src/exec/client-profiler.exec.js'), 'utf8');
+  const src = fs.readFileSync(require.resolve('../../src/exec/visit-profiling.exec.js'), 'utf8');
   assert.ok(/^'use strict';/.test(src));
   lint.assertNoBannedConstructs(assert, src);
   lint.assertLoopBoundsCached(assert, src);

@@ -10,9 +10,11 @@
   "scripts": {
     "check": "node bin/singularity.js check",
     "test": "node bin/singularity.js verify",
+    "map": "node bin/singularity.js map",
     "drift": "node bin/singularity.js drift",
     "decisions": "node bin/singularity.js decisions",
-    "layout": "node bin/singularity.js layout payment-processor",
+    "layout": "node bin/singularity.js layout",
+    "demo": "node examples/salon-profiler.demo.js",
     "bench": "node --expose-gc --max-old-space-size=6144 tests/benchmark.js"
   },
   "engines": {

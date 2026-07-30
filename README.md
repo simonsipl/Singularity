@@ -387,17 +387,20 @@ Ordered by how much they unblock, with current status stated honestly:
 
 | Path | Role |
 |---|---|
-| [`.cursorrules`](.cursorrules) | Compiler ruleset — normative, read before touching `src/exec/` or `src/runtime/` |
+| [`.cursorrules`](.cursorrules) | Compiler ruleset — normative |
 | [`CLAUDE.md`](CLAUDE.md) | Entry point for agents |
-| [`bin/singularity.js`](bin/singularity.js) | CLI — the enforcement surface |
-| [`src/intents/payment-processor.intent.ts`](src/intents/payment-processor.intent.ts) | Declarative contract, 26 rules, zero logic |
-| [`src/exec/payment-processor.exec.js`](src/exec/payment-processor.exec.js) | Generated execution unit — do not hand-edit |
-| [`src/runtime/arena.js`](src/runtime/arena.js) | Schema-driven arena allocator — owns all offset math |
-| [`tests/payment-processor.assert.js`](tests/payment-processor.assert.js) | Loopback suite, 33 checks, zero dependencies |
-| [`tests/arena.assert.js`](tests/arena.assert.js) | Runtime suite, 23 checks incl. adversarial codegen cases |
-| [`tests/benchmark.js`](tests/benchmark.js) | 1M-record benchmark with equivalence gating |
-| [`decisions/`](decisions/) | Why the non-obvious choices were made |
+| [`docs/STRUCTURE.md`](docs/STRUCTURE.md) | **Why there are two trees** — read this first |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision-record format and workflow |
+| [`bin/singularity.js`](bin/singularity.js) | CLI — the enforcement surface |
+| [`features/payments/`](features/payments/) | Feature: money movement (`bulk-settlement`) |
+| [`features/clients/`](features/clients/) | Feature: client cards and visit profiling |
+| [`src/exec/`](src/exec/) | Generated execution units — flat, never hand-edited |
+| [`src/runtime/arena.js`](src/runtime/arena.js) | Schema-driven arena allocator |
+| [`tests/`](tests/) | Framework suites, shared lint, benchmark |
+| [`examples/`](examples/) | Runnable adoption scenarios |
+| [`decisions/`](decisions/) | Framework-wide decisions |
+
+Humans navigate `features/`; machines run `src/exec/`. Exec units are generated and never read, so the two trees are free to diverge — see [docs/STRUCTURE.md](docs/STRUCTURE.md).
 
 ### Invariants
 

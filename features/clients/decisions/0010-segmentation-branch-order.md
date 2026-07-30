@@ -3,7 +3,8 @@ id: 0010
 title: Lapsed outranks VIP in the segmentation ladder
 status: accepted
 date: 2026-07-30
-module: client-profiler
+feature: clients
+workflow: visit-profiling
 rules:
   - segment.order
   - segment.1_never

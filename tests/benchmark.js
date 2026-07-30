@@ -8,7 +8,7 @@
 
 const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
-const X = require('../src/exec/payment-processor.exec.js');
+const X = require('../src/exec/bulk-settlement.exec.js');
 
 const N = 1000000;
 const ACCOUNTS = 4096;

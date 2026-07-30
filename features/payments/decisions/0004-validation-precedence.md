@@ -3,7 +3,8 @@ id: 0004
 title: Validation short-circuits in a fixed declared order
 status: accepted
 date: 2026-07-30
-module: payment-processor
+feature: payments
+workflow: bulk-settlement
 rules:
   - validate.order
   - validate.1_amount_positive
