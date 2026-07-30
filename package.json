@@ -1,0 +1,14 @@
+{
+  "name": "singularity",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-native backend framework: declarative intents compiled to V8-sympathetic execution units.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node tests/payment-processor.assert.js",
+    "bench": "node --expose-gc --max-old-space-size=6144 tests/benchmark.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

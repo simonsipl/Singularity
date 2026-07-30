@@ -1,0 +1,8 @@
+# Normalise to LF in the repository; check out native on Windows.
+* text=auto eol=lf
+
+*.js   text eol=lf
+*.ts   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+.cursorrules text eol=lf
