@@ -269,7 +269,7 @@ check('visit.3_not_future: today counts, tomorrow is rejected', function () {
   assert.equal(P.cliVisitCount[0], 1);
 });
 
-check('visit.4_spend_sane: zero legal, negative and over-cap rejected', function () {
+check('visit.4: zero legal; negative and over-cap get DISTINCT statuses', function () {
   const P = run([goodCard(1)], [
     visit(0, TODAY - 1, 0),
     visit(0, TODAY - 2, -1),
@@ -279,9 +279,12 @@ check('visit.4_spend_sane: zero legal, negative and over-cap rejected', function
   assert.equal(P.visStatus[0], X.VISIT_COUNTED, 'zero spend is a real visit');
   assert.equal(P.visStatus[1], X.VISIT_NEGATIVE_SPEND);
   assert.equal(P.visStatus[2], X.VISIT_COUNTED, 'cap is inclusive');
-  assert.equal(P.visStatus[3], X.VISIT_NEGATIVE_SPEND);
+  assert.equal(P.visStatus[3], X.VISIT_SPEND_EXCEEDS_MAX,
+    'over-cap must NOT report NEGATIVE_SPEND — callers cannot act on a wrong reason');
+  assert.notEqual(X.VISIT_NEGATIVE_SPEND, X.VISIT_SPEND_EXCEEDS_MAX);
   assert.equal(P.cliVisitCount[0], 2);
-  assert.equal(P.stats[X.STAT_REJ_BAD_SPEND], 2);
+  assert.equal(P.stats[X.STAT_REJ_BAD_SPEND], 1);
+  assert.equal(P.stats[X.STAT_REJ_SPEND_OVER_MAX], 1);
 });
 
 check('visit.5_no_show: counted separately, no spend, not an attended visit', function () {
@@ -459,7 +462,7 @@ check('aggregate.client_counts and visit_counts partition exactly', function () 
     s[X.STAT_REJ_DUPLICATE_PHONE] + s[X.STAT_REJ_FUTURE_DATED];
   assert.equal(rejTally, s[X.STAT_REJECTED_CLIENTS]);
   const visRejTally = s[X.STAT_REJ_UNKNOWN_CLIENT] + s[X.STAT_REJ_INACTIVE_CLIENT] +
-    s[X.STAT_REJ_VISIT_FUTURE] + s[X.STAT_REJ_BAD_SPEND];
+    s[X.STAT_REJ_VISIT_FUTURE] + s[X.STAT_REJ_BAD_SPEND] + s[X.STAT_REJ_SPEND_OVER_MAX];
   assert.equal(visRejTally, s[X.STAT_REJECTED_VISITS]);
 });
 
@@ -598,6 +601,43 @@ check('a full hash table cannot spin: probe is bounded', function () {
 });
 
 /* ---- ruleset compliance --------------------------------------------- */
+
+check('collisionRiskFor quantifies the 32-bit dedupe risk honestly', function () {
+  /* birthday problem over the hash space, not the table size */
+  assert.ok(X.collisionRiskFor(1000) < 0.001, '1k clients should be negligible');
+  assert.ok(X.collisionRiskFor(10000) > 0.010 && X.collisionRiskFor(10000) < 0.015,
+    '10k should be ~1.2%');
+  assert.ok(X.collisionRiskFor(100000) > 0.65,
+    '100k should be ~69% — if this drops, the hash width changed and 0009 needs updating');
+  assert.ok(X.collisionRiskFor(0) === 0);
+  /* monotonic in client count */
+  let prev = -1;
+  for (let n = 0; n <= 200000; n += 20000) {
+    const r = X.collisionRiskFor(n);
+    assert.ok(r >= prev, 'risk must not decrease with more clients');
+    prev = r;
+  }
+});
+
+check('segmentCounts[0] is structurally always zero (no dead counter)', function () {
+  /* SEG_UNSEGMENTED is unreachable in the counting loop: inactive clients
+   * continue before assignment, active clients always land in 1..6. */
+  const clients = [];
+  for (let i = 0; i < 60; i++) {
+    clients.push(i % 5 === 0 ? card(900 + i, 0, 11) : goodCard(900 + i));
+  }
+  const visits = [];
+  for (let i = 0; i < 60; i++) {
+    for (let k = 0; k < (i % 14); k++) visits.push(visit(i, TODAY - (i * 9) - k * 3, 800));
+  }
+  const P = run(clients, visits);
+  assert.equal(P.segmentCounts[X.SEG_UNSEGMENTED], 0);
+  let sum = 0;
+  for (let sIdx = 1; sIdx < X.SEG_COUNT; sIdx++) sum += P.segmentCounts[sIdx];
+  assert.equal(sum, P.stats[X.STAT_ACTIVE_CLIENTS],
+    'segments 1..6 must account for every active client');
+  assert.ok(P.stats[X.STAT_REJECTED_CLIENTS] > 0, 'test must exercise inactive clients');
+});
 
 check('exec source obeys the ruleset', function () {
   const fs = require('node:fs');

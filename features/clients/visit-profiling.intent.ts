@@ -46,6 +46,9 @@ export const enum VisitStatus {
   NEGATIVE_SPEND = 5,
   /** Booked but not attended. Counts toward no-shows only. */
   NO_SHOW_RECORDED = 6,
+  /** Spend above MAX_VISIT_SPEND. Distinct from NEGATIVE_SPEND so callers can
+   *  tell a malformed amount from an implausibly large one. */
+  SPEND_EXCEEDS_MAX = 7,
 }
 
 export const enum Segment {
@@ -212,7 +215,8 @@ export interface ClientProfilerIntent {
     "visit.1_client_known: clientSlot >= clients.length -> UNKNOWN_CLIENT",
     "visit.2_client_active: the referenced client is not ACTIVE -> INACTIVE_CLIENT",
     "visit.3_not_future: day > asOfDay -> FUTURE_DATED",
-    "visit.4_spend_sane: spend < 0 or spend > MAX_VISIT_SPEND -> NEGATIVE_SPEND",
+    "visit.4_spend_negative: spend < 0 -> NEGATIVE_SPEND",
+    "visit.4b_spend_over_max: spend > MAX_VISIT_SPEND -> SPEND_EXCEEDS_MAX; a separate status so callers can distinguish a malformed amount from an implausible one",
     "visit.5_no_show: VisitFlag.NO_SHOW set -> NO_SHOW_RECORDED; increments noShowCount only, contributes no spend and does not count as an attended visit",
     "visit.count: an otherwise valid attended visit -> COUNTED; increments visitCount and adds spend",
     "visit.recency_window: firstVisitDay is the minimum and lastVisitDay the maximum day over COUNTED visits only; both are 0 when visitCount is 0",
@@ -261,5 +265,6 @@ export interface ClientProfilerIntent {
     | "FutureDated"
     | "UnknownClient"
     | "InactiveClient"
-    | "NegativeSpend";
+    | "NegativeSpend"
+    | "SpendExceedsMax";
 }

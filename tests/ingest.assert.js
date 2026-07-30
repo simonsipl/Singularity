@@ -123,6 +123,34 @@ check('fractional values are REJECTED, never rounded (decision 0001)', function 
   assert.throws(function () { ingest('[{"amount":-0.01}]', v, 4); }, /fractional value/);
 });
 
+check('values too large for the destination view are REJECTED, not wrapped', function () {
+  /* Writing 2200000000 into an Int32Array silently yields -2094967296. Silent
+   * truncation is precisely the corruption this scanner exists to prevent, so
+   * an out-of-range value is refused like a float or an unknown key. */
+  const v = makeViews(4);
+  assert.throws(function () { ingest('[{"amount":2200000000}]', v, 4); },
+    /does not fit field "amount"/);
+  assert.throws(function () { ingest('[{"amount":9999999999}]', v, 4); },
+    /would wrap silently/);
+  /* per-view ranges, not one global range: flags is a u8 */
+  assert.throws(function () { ingest('[{"flags":256}]', v, 4); }, /does not fit field "flags"/);
+  assert.throws(function () { ingest('[{"flags":-1}]', v, 4); }, /range 0\.\.255/);
+  /* unsigned views reject negatives; signed views accept them */
+  assert.throws(function () { ingest('[{"accountSlot":-1}]', v, 4); }, /does not fit/);
+  assert.doesNotThrow(function () { ingest('[{"amount":-2147483648}]', v, 4); });
+});
+
+check('exact boundary values are accepted on every view width', function () {
+  const v = makeViews(4);
+  ingest('[{"amount":2147483647,"flags":255,"accountSlot":4294967295,"currency":0}]', v, 4);
+  assert.equal(v[1][0], 4294967295, 'u32 max');
+  assert.equal(v[2][0], 2147483647, 'i32 max');
+  assert.equal(v[3][0], 0);
+  assert.equal(v[4][0], 255, 'u8 max');
+  ingest('[{"amount":-2147483648}]', v, 4);
+  assert.equal(v[2][0], -2147483648, 'i32 min');
+});
+
 check('unknown keys are REJECTED as contract drift, not ignored', function () {
   const v = makeViews(4);
   assert.throws(function () { ingest('[{"amonut":5}]', v, 4); }, /unknown key "amonut"/);

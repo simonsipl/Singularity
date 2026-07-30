@@ -8,13 +8,14 @@ workflow: visit-profiling
 rules:
   - client.validate_order
   - visit.validate_order
-  - visit.4_spend_sane
+  - visit.4_spend_negative
+  - visit.4b_spend_over_max
   - visit.order_independent
   - cadence.definition
   - cadence.same_day
 verified_by:
   - "client.validate_order: name > phone > future > duplicate"
-  - "visit.4_spend_sane: zero legal, negative and over-cap rejected"
+  - "visit.4: zero legal; negative and over-cap get DISTINCT statuses"
   - "visit.order_independent: shuffling a batch yields identical aggregates"
   - "cadence.definition: truncating mean gap"
   - "cadence.same_day: repeated same-day visits give 0"
@@ -61,10 +62,13 @@ order-dependent aggregate without noticing.
 - The spend cap is a contract, not a guardrail: a genuine 15,000-unit transaction
   is rejected as invalid. If real prices approach the cap, this must be raised
   deliberately, and the running-total precision argument in [[0001]] rechecked.
-- The upper bound and the "negative" bound share one status code
-  (`NEGATIVE_SPEND`), which is a naming inaccuracy in the enum. Callers cannot
-  distinguish "below zero" from "above cap" without inspecting the value. Left as
-  is because splitting it is a contract change; noted because the name misleads.
+- ~~The upper bound and the "negative" bound share one status code.~~
+  **Fixed.** An external review pointed out that callers could not distinguish
+  "below zero" from "above cap" and therefore could not act on the reason. The
+  statuses are now separate — `NEGATIVE_SPEND` and `SPEND_EXCEEDS_MAX` — with
+  their own counters. It was a contract change, which is why the original record
+  deferred it; the review was right that "the name misleads" is not an acceptable
+  resting place for a status callers are supposed to branch on.
 - Order independence for visits contrasts with de-duplication, which is
   deliberately order-*dependent* ([[0009]]). Two adjacent passes with opposite
   properties is a real trap for a reader skimming the code.

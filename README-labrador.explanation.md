@@ -120,7 +120,7 @@ You don't know what a megabyte is, and you don't need to. Here's the picture:
 > **The normal way makes a pile of wrapping paper the size of a van.**
 > **Our way makes a pile you could fit in a matchbox.**
 
-That is a real measurement, not a joke. 210 megabytes versus 4.7 kilobytes. The van versus the matchbox.
+That is a real measurement, not a joke. 210 megabytes versus 4.6 kilobytes. The van versus the matchbox.
 
 How? **We use the same buckets over and over.** We don't get new buckets for each batch. We empty them out and use them again, like washing up a plate instead of throwing it away and buying a new plate every dinner.
 
@@ -231,7 +231,7 @@ Ouch. Our "thirteen times faster" was mostly just "thirteen times less messy." B
 **So when do the buckets actually win?** We kept racing, fairly this time, and found out:
 
 - **When the lunchboxes are scattered all over the house** — which is what happens to lunchboxes in real life, once they've been around a while — Biscuit has to run to a different room for every single box. Buckets win by **5 times**.
-- **When you only want ONE thing from each box** — say, just the amounts — with lunchboxes, Biscuit opens every box and carries everything anyway. With buckets, she goes straight to the amounts bucket. Buckets win by **12 times**. This is her favourite race.
+- **When you only want ONE thing from each box** — say, just the amounts — with lunchboxes, Biscuit opens every box and carries everything anyway. With buckets, she goes straight to the amounts bucket. Buckets win by **11 times**. This is her favourite race.
 - **And sometimes we LOSE.** If there are only a few payments but our bucket is enormous, we waste time washing out the whole giant bucket for three biscuits' worth of work. The tidy lunchbox way beats us there. We wrote that on the tin too, because hiding it would be fibbing.
 
 **Mess.** A van of wrapping paper, versus a matchbox. (This one survived the rematch completely — the tidy way still can't share its lunchboxes between helpers, and the messy way is still a van.)

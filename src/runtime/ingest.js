@@ -15,6 +15,9 @@
  * - values are integers, optionally negative — a '.' or exponent is an ERROR,
  *   because money is integer minor units (decision 0001) and rejecting floats
  *   at the boundary enforces the contract where bad data enters
+ * - a value too large for its destination view is an ERROR, not a wrap. Writing
+ *   2200000000 into an Int32Array yields -2094967296 with no signal; refusing it
+ *   is the same principle as refusing floats
  * - no strings, no nesting, no escapes in keys
  *
  * Malformed input throws with a byte offset. This is boundary code, not a hot
@@ -44,6 +47,23 @@ function fail(pos, what) {
 
 /* Builds an ingester for a fixed field set. fieldNames order defines the order
  * of the views array handed to every ingest() call. */
+/* Safe integer range per TypedArray kind. A value outside its view's range
+ * would WRAP silently on assignment (2200000000 -> -2094967296 in an Int32Array),
+ * which is exactly the class of silent corruption this scanner refuses
+ * everywhere else. Bounds are resolved per call from the actual views. */
+function viewBounds(view, out, i) {
+  const c = view.constructor;
+  if (c === Int8Array) { out[i] = -128; out[i + 1] = 127; return; }
+  if (c === Uint8Array || c === Uint8ClampedArray) { out[i] = 0; out[i + 1] = 255; return; }
+  if (c === Int16Array) { out[i] = -32768; out[i + 1] = 32767; return; }
+  if (c === Uint16Array) { out[i] = 0; out[i + 1] = 65535; return; }
+  if (c === Int32Array) { out[i] = -2147483648; out[i + 1] = 2147483647; return; }
+  if (c === Uint32Array) { out[i] = 0; out[i + 1] = 4294967295; return; }
+  /* Float32Array/Float64Array hold every integer we can parse exactly up to 2^53;
+   * beyond that the parse itself has already lost precision. */
+  out[i] = -9007199254740991; out[i + 1] = 9007199254740991;
+}
+
 function makeIngester(fieldNames) {
   if (!Array.isArray(fieldNames) || fieldNames.length === 0) {
     throw new Error('[singularity/ingest] fieldNames must be a non-empty array');
@@ -60,6 +80,8 @@ function makeIngester(fieldNames) {
     nameLens[f] = name.length;
   }
   const scratch = new Float64Array(nFields);
+  /* [min, max] per field, refreshed once per ingest() call — never per record */
+  const bounds = new Float64Array(nFields << 1);
 
   /* str: the JSON text. views: typed arrays parallel to fieldNames.
    * capacity: max records. returns the record count. */
@@ -67,6 +89,7 @@ function makeIngester(fieldNames) {
     if (views.length !== nFields) {
       throw new Error('[singularity/ingest] expected ' + nFields + ' views, got ' + views.length);
     }
+    for (let f = 0; f < nFields; f++) viewBounds(views[f], bounds, f << 1);
     const len = str.length;
     let i = 0;
 
@@ -150,7 +173,16 @@ function makeIngester(fieldNames) {
           }
           break;
         }
-        scratch[field] = neg === 1 ? -value : value;
+        const signed = neg === 1 ? -value : value;
+        /* refuse rather than wrap — a value the destination view cannot hold is
+         * corrupt data, and silently truncating it is the failure mode this
+         * scanner exists to prevent */
+        if (signed < bounds[field << 1] || signed > bounds[(field << 1) + 1]) {
+          fail(i, 'value ' + signed + ' does not fit field "' + fieldNames[field] +
+            '" (range ' + bounds[field << 1] + '..' + bounds[(field << 1) + 1] +
+            '); it would wrap silently on assignment');
+        }
+        scratch[field] = signed;
       }
 
       for (let f = 0; f < nFields; f++) views[f][count] = scratch[f];

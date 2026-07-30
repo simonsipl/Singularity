@@ -19,8 +19,8 @@ The nightly pass. Three stages over one arena:
    first/last visit window per client.
 3. **Segment** — derive cadence, assign a segment, flag unreliable clients.
 
-- Contract: [`visit-profiling.intent.ts`](visit-profiling.intent.ts) — 43 rules
-- Verification: [`visit-profiling.assert.js`](visit-profiling.assert.js) — 47 checks
+- Contract: [`visit-profiling.intent.ts`](visit-profiling.intent.ts) — 44 rules
+- Verification: [`visit-profiling.assert.js`](visit-profiling.assert.js) — 49 checks
 - Compiled to: `src/exec/visit-profiling.exec.js` *(generated — do not read or edit)*
 - Try it: `node examples/salon-profiler.demo.js` — 650,000 records in ~16 ms
 
@@ -53,7 +53,13 @@ The nightly pass. Three stages over one arena:
   `+44 7700 900123` and `07700900123` are different clients and de-duplication
   silently fails. The framework cannot detect this
   ([0011](decisions/0011-no-pii-in-the-arena.md)).
+- **A 32-bit phone hash is too narrow above ~10,000 clients.** Two distinct
+  numbers sharing a hash means a real client is wrongly rejected as a duplicate;
+  the birthday-problem risk is ~1.2% at 10k clients and **~69% at 100k**. Call
+  `collisionRiskFor(n)` to size it. Widening to 64 bits is the fix and is not yet
+  implemented ([0009](decisions/0009-open-addressed-dedupe.md)).
 - Segment thresholds are compile-time constants. Per-tenant tuning would need
   bounds validation that does not exist.
-- `NEGATIVE_SPEND` is also returned for spend *above* the cap. The name misleads
+- ~~`NEGATIVE_SPEND` is also returned for spend above the cap.~~ **Fixed** after an
+  external review: over-cap now returns `SPEND_EXCEEDS_MAX` with its own counter
   ([0012](decisions/0012-profiler-input-validation.md)).

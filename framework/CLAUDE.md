@@ -51,6 +51,7 @@ recorded rationale?).
 | Feature | Workflow | Rules | Checks |
 |---|---|---|---|
 | (framework) | `arena` runtime | — | 23 |
+| (framework) | `ingest` runtime | — | 20 |
 
 *(none yet — see [framework README](README.md) for the first-feature walkthrough)*
 

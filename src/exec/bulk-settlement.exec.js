@@ -23,6 +23,10 @@ const STAT_REJ_AMOUNT_EXCEEDS_LIMIT = 5;
 const STAT_REJ_UNSUPPORTED_CURRENCY = 6;
 const STAT_REJ_UNKNOWN_ACCOUNT = 7;
 const STAT_REJ_INSUFFICIENT_FUNDS = 8;
+/* Number of slots actually in use. foldShardStats folds exactly this many, so a
+ * new stat MUST bump it or its value silently vanishes after a parallel run.
+ * Asserted against the real slot count in the assert suite. */
+const STAT_IN_USE = 9;
 const STAT_SLOTS = 16; /* padded to 128B, one cache line pair, keeps balances 8B-aligned */
 
 const LIMIT_MAX_PAYMENT_AMOUNT = 50000000;
@@ -209,7 +213,7 @@ function foldShardStats(L, slabs, shards) {
   const stats = L.stats;
   for (let k = 0; k < shards; k++) {
     const slab = slabs[k];
-    for (let s = 0; s < 9; s++) stats[s] += slab[s];
+    for (let s = 0; s < STAT_IN_USE; s++) stats[s] += slab[s];
   }
 }
 
@@ -230,6 +234,7 @@ module.exports = {
   STAT_REJ_UNSUPPORTED_CURRENCY: STAT_REJ_UNSUPPORTED_CURRENCY,
   STAT_REJ_UNKNOWN_ACCOUNT: STAT_REJ_UNKNOWN_ACCOUNT,
   STAT_REJ_INSUFFICIENT_FUNDS: STAT_REJ_INSUFFICIENT_FUNDS,
+  STAT_IN_USE: STAT_IN_USE,
   STAT_SLOTS: STAT_SLOTS,
   LIMIT_MAX_PAYMENT_AMOUNT: LIMIT_MAX_PAYMENT_AMOUNT,
   LIMIT_MAX_FEE: LIMIT_MAX_FEE,

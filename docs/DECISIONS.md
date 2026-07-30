@@ -78,8 +78,8 @@ node bin/singularity.js decisions
 
 ```
 decisions  (does every intent rule have recorded rationale?)
-  clients/visit-profiling   43 rules: 30 documented, 13 waived, 0 undocumented
-  payments/bulk-settlement  26 rules: 26 documented, 0 waived, 0 undocumented
+  clients/visit-profiling   44 rules: 31 documented, 13 waived, 0 undocumented
+  payments/bulk-settlement  31 rules: 31 documented, 0 waived, 0 undocumented
 ```
 
 This gives three enforcement properties that a `docs/` folder does not:

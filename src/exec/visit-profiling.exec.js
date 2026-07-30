@@ -2,7 +2,7 @@
 /* SINGULARITY EXEC UNIT — compiled from features/clients/visit-profiling.intent.ts
  * DO NOT HAND-EDIT. DO NOT REFORMAT FOR READABILITY. Regenerate from the intent.
  * Verified by features/clients/visit-profiling.assert.js
- * intent-sha256: 777b755374b4923682e9aa5361642e785daf23a540d682ec3dd5f13f811ab148 */
+ * intent-sha256: f701e06adc869bcd06870ed6a05449aad1c076ffe494b4fe98ea5923d0830eb9 */
 
 const { defineArena } = require('../runtime/arena.js');
 
@@ -20,6 +20,9 @@ const VISIT_INACTIVE_CLIENT = 3;
 const VISIT_FUTURE_DATED = 4;
 const VISIT_NEGATIVE_SPEND = 5;
 const VISIT_NO_SHOW_RECORDED = 6;
+/* split out of VISIT_NEGATIVE_SPEND: callers could not tell "below zero" from
+ * "above the cap", and the shared name actively misled. See decisions/0012. */
+const VISIT_SPEND_EXCEEDS_MAX = 7;
 
 const SEG_UNSEGMENTED = 0;
 const SEG_NEVER_VISITED = 1;
@@ -63,6 +66,7 @@ const STAT_REJ_INACTIVE_CLIENT = 11;
 const STAT_REJ_VISIT_FUTURE = 12;
 const STAT_REJ_BAD_SPEND = 13;
 const STAT_UNRELIABLE_CLIENTS = 14;
+const STAT_REJ_SPEND_OVER_MAX = 15;
 const STAT_SLOTS = 16;
 
 /* 21 declared fields -> the handle carries 26 properties. That is past the
@@ -113,6 +117,17 @@ function hashCapacityFor(clientCapacity) {
   const target = clientCapacity << 1;
   while (cap < target) cap = cap << 1;
   return cap;
+}
+
+/* Probability that at least two distinct phone hashes collide among n clients —
+ * i.e. that at least one real client is wrongly rejected as a duplicate. This is
+ * the birthday problem over the 32-bit hash space and it grows quadratically:
+ * ~1.2% at 10k clients, ~25% at 50k, ~69% at 100k. Exported so callers can size
+ * the risk for their own scale instead of meeting it in production.
+ * See decisions/0009. */
+function collisionRiskFor(clientCount) {
+  const n = clientCount;
+  return 1 - Math.exp(-(n * (n - 1)) / 8589934592);
 }
 
 function allocProfiler(clientCapacity, visitCapacity) {
@@ -197,7 +212,7 @@ function foldVisits(P, visitCount, clientCount, asOfDay) {
   const cliLastDay = P.cliLastDay;
 
   let counted = 0, noShow = 0, rejected = 0;
-  let rUnknown = 0, rInactive = 0, rFuture = 0, rSpend = 0;
+  let rUnknown = 0, rInactive = 0, rFuture = 0, rSpend = 0, rOverMax = 0;
   let spendTotal = 0;
 
   for (let i = 0; i < visitCount; i++) {
@@ -213,8 +228,11 @@ function foldVisits(P, visitCount, clientCount, asOfDay) {
       visStatus[i] = VISIT_FUTURE_DATED; rFuture++; rejected++; continue;
     }
     const spend = visSpend[i];
-    if (spend < 0 || spend > LIMIT_MAX_VISIT_SPEND) {
+    if (spend < 0) {
       visStatus[i] = VISIT_NEGATIVE_SPEND; rSpend++; rejected++; continue;
+    }
+    if (spend > LIMIT_MAX_VISIT_SPEND) {
+      visStatus[i] = VISIT_SPEND_EXCEEDS_MAX; rOverMax++; rejected++; continue;
     }
     if ((visFlags[i] & FLAG_NO_SHOW) !== 0) {
       visStatus[i] = VISIT_NO_SHOW_RECORDED;
@@ -245,6 +263,7 @@ function foldVisits(P, visitCount, clientCount, asOfDay) {
   stats[STAT_REJ_INACTIVE_CLIENT] += rInactive;
   stats[STAT_REJ_VISIT_FUTURE] += rFuture;
   stats[STAT_REJ_BAD_SPEND] += rSpend;
+  stats[STAT_REJ_SPEND_OVER_MAX] += rOverMax;
   return counted;
 }
 
@@ -261,7 +280,10 @@ function segmentClients(P, clientCount, asOfDay) {
   const cliRiskFlags = P.cliRiskFlags;
   const segmentCounts = P.segmentCounts;
 
-  let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0;
+  /* no s0: SEG_UNSEGMENTED is unreachable here. Inactive clients `continue`
+   * before any segment is assigned, and every active client receives 1..6.
+   * segmentCounts[0] is therefore always 0, which the suite asserts. */
+  let s1 = 0, s2 = 0, s3 = 0, s4 = 0, s5 = 0, s6 = 0;
   let unreliable = 0;
 
   for (let i = 0; i < clientCount; i++) {
@@ -287,9 +309,8 @@ function segmentClients(P, clientCount, asOfDay) {
       else seg = SEG_NEW;
     }
     cliSegment[i] = seg;
-    if (seg === 0) s0++; else if (seg === 1) s1++; else if (seg === 2) s2++;
-    else if (seg === 3) s3++; else if (seg === 4) s4++; else if (seg === 5) s5++;
-    else s6++;
+    if (seg === 1) s1++; else if (seg === 2) s2++; else if (seg === 3) s3++;
+    else if (seg === 4) s4++; else if (seg === 5) s5++; else s6++;
 
     const booked = visits + noShows;
     let risk = 0;
@@ -302,7 +323,7 @@ function segmentClients(P, clientCount, asOfDay) {
     cliRiskFlags[i] = risk;
   }
 
-  segmentCounts[0] += s0; segmentCounts[1] += s1; segmentCounts[2] += s2;
+  segmentCounts[1] += s1; segmentCounts[2] += s2;
   segmentCounts[3] += s3; segmentCounts[4] += s4; segmentCounts[5] += s5;
   segmentCounts[6] += s6;
   P.stats[STAT_UNRELIABLE_CLIENTS] += unreliable;
@@ -331,6 +352,7 @@ module.exports = {
   VISIT_FUTURE_DATED: VISIT_FUTURE_DATED,
   VISIT_NEGATIVE_SPEND: VISIT_NEGATIVE_SPEND,
   VISIT_NO_SHOW_RECORDED: VISIT_NO_SHOW_RECORDED,
+  VISIT_SPEND_EXCEEDS_MAX: VISIT_SPEND_EXCEEDS_MAX,
   SEG_UNSEGMENTED: SEG_UNSEGMENTED,
   SEG_NEVER_VISITED: SEG_NEVER_VISITED,
   SEG_NEW: SEG_NEW,
@@ -367,9 +389,11 @@ module.exports = {
   STAT_REJ_VISIT_FUTURE: STAT_REJ_VISIT_FUTURE,
   STAT_REJ_BAD_SPEND: STAT_REJ_BAD_SPEND,
   STAT_UNRELIABLE_CLIENTS: STAT_UNRELIABLE_CLIENTS,
+  STAT_REJ_SPEND_OVER_MAX: STAT_REJ_SPEND_OVER_MAX,
   STAT_SLOTS: STAT_SLOTS,
   PROFILER: PROFILER,
   hashCapacityFor: hashCapacityFor,
+  collisionRiskFor: collisionRiskFor,
   allocProfiler: allocProfiler,
   attachProfiler: attachProfiler,
   resetProfiler: resetProfiler,

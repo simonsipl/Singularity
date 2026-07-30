@@ -52,8 +52,8 @@ Two production-shaped workflows, compiled from declarative contracts:
 
 | Feature | Workflow | Rules | Checks |
 |---|---|---|---|
-| payments | `bulk-settlement` | 31 | 39 |
-| clients | `visit-profiling` | 43 | 47 |
+| payments | `bulk-settlement` | 31 | 41 |
+| clients | `visit-profiling` | 44 | 49 |
 | framework | arena runtime | — | 23 |
 | framework | JSON ingest | — | 18 |
 | framework | kit sync | — | 13 |
@@ -62,14 +62,14 @@ Composition, in lines:
 
 | Kind | Lines | Note |
 |---|---|---|
-| Intents (contracts) | 474 | human-authored |
-| Decision records | 1,145 | human-reviewed rationale |
-| **Generated exec units** | **653** | the actual product |
-| Runtime | 506 | shared infrastructure |
-| Assert suites + framework tests | 3,546 | verification |
+| Intents (contracts) | 479 | human-authored |
+| Decision records | 1,174 | human-reviewed rationale |
+| **Generated exec units** | **682** | the actual product |
+| Runtime | 538 | shared infrastructure |
+| Assert suites + framework tests | 3,664 | verification |
 
 **Verification outweighs generated exec code 5.4 : 1.** Counting contracts and
-decision records as well, **82% of the artifact exists to constrain, verify or
+decision records as well, **81% of the artifact exists to constrain, verify or
 explain the code that runs** — treating the shared runtime as product code, which
 is the conservative reading. Counting only the generated exec as "product", the
 figure is 89%. This ratio is the central economic fact of the approach and is
@@ -244,8 +244,8 @@ This hypothesis had the most data available. It splits cleanly.
 | Metric | Idiomatic objects | Arena | Ratio |
 |---|---|---|---|
 | Input residency (1M records) | 144.96 MB, GC-scanned | 18.15 MB, off-heap | **8x** |
-| Allocation churn per batch | 210.23 MB | 4.7 KB | **~45,000x** |
-| JSON ingest allocation | 6.87 MB/call | 10.5 KB/call | **668x** |
+| Allocation churn per batch | 210.22 MB | 4.6 KB | **~47,000x** |
+| JSON ingest allocation | 6.87 MB/call | 20.1 KB/call | **350x** |
 
 Churn is the load-bearing figure. Eliminating it removes GC pauses from the
 latency tail, and interactive fleets are sized for p99, not mean. A model with
@@ -255,12 +255,12 @@ stated assumptions puts pod density around 4x on the memory-bound dimension.
 
 | Comparison | Result |
 |---|---|
-| vs idiomatic HOF style | ~9x faster |
+| vs idiomatic HOF style | ~8.7x faster |
 | vs **disciplined** plain JS, well-ordered objects | ~1–1.5x |
-| vs disciplined plain JS, scattered heap | 5–12x |
-| Small batch, oversized arena | **0.67x — loses** |
+| vs disciplined plain JS, scattered heap | 5–11x |
+| Small batch, oversized arena | **0.71x — loses** |
 | 8 worker threads vs sequential | 2.06x — for 8x the CPU |
-| Direct JSON ingest vs `JSON.parse` | **0.83x — slower** |
+| Direct JSON ingest vs `JSON.parse` | **0.80x — slower** |
 
 Against *competent* plain JavaScript the arithmetic advantage largely evaporates.
 The 9x figure measures the baseline's allocation habits, which disciplined code
@@ -271,8 +271,8 @@ Two results actively contradict "more efficient use of resources":
 - **Parallel sharding returns 2.06x for 8x the CPU.** That is a *less* efficient
   use of compute. It buys latency, not throughput-per-core. Every shard scans the
   whole batch to find its records, so the design is sublinear by construction.
-- **Direct JSON ingest is slower** than the native parser it replaces. It trades
-  a few ns/record for eliminating megabytes of garbage. A pure allocation win.
+- **Direct JSON ingest is slower** than the native parser it replaces (0.80x). It
+  trades ~39 ns/record for eliminating megabytes of garbage. A pure allocation win.
 
 **The unbudgeted cost.** The hypothesis omits the resources spent *generating*
 the code. Every compilation is inference: energy, latency, money. For code
@@ -320,7 +320,7 @@ does not state:
 > **AI compilation removes the maintenance cost that made this class of
 > optimisation irrational.**
 
-Nobody hand-writes flattened, arena-offset, hand-inlined code with a 39-check
+Nobody hand-writes flattened, arena-offset, hand-inlined code with a 41-check
 adversarial suite for a fee calculator — the maintenance burden is indefensible
 against the benefit. When generation and verification are mechanical, that
 calculus inverts. The human maintains a 31-rule contract that reads like a
@@ -412,20 +412,20 @@ The composition table in §1 is the most under-discussed result here.
 
 ```
 CODE THAT RUNS
-  generated exec units      653 lines
-  shared runtime            506 lines
+  generated exec units      682 lines
+  shared runtime            538 lines
                           -----------
-                          1,159 lines   18%
+                          1,220 lines   19%
 
 SUPPORTING ARTIFACTS
-  assert suites + tests   3,546 lines
-  decision records        1,145 lines
-  contracts (intents)       474 lines
+  assert suites + tests   3,664 lines
+  decision records        1,174 lines
+  contracts (intents)       479 lines
                           -----------
-                          5,165 lines   82%
+                          5,317 lines   81%
 ```
 
-**82% of what was written exists to constrain, verify, or explain the 18% that
+**81% of what was written exists to constrain, verify, or explain the 19% that
 actually runs.** (Counting only the *generated* exec as product, it is 89%.)
 
 That is not overhead to be optimised away — the whole argument for trusting
@@ -464,7 +464,7 @@ nobody can vouch for — which is worse than not having generated them at all.
    a genuine safety property.
 2. **Measurement instruments need controls more than code needs tests.** A
    single-shot `heapUsed` delta reported 18.91 MB of garbage for code that
-   allocates ~4.7 KB. Pointing the same instrument at a no-op of equal duration
+   allocates ~4.6 KB. Pointing the same instrument at a no-op of equal duration
    exposed it immediately. *When a measurement surprises you, calibrate the ruler
    against a known answer.*
 3. **Memory locality dominated shape polymorphism, contradicting folk wisdom.**
@@ -546,8 +546,8 @@ the browser constraints are security mechanisms to design around rather than
 obstacles that will yield.
 
 **Not hypothesised by anyone, and the most transferable result:** verification is
-not scaffolding around the idea — it *is* the idea. 82% of the written artifact
-exists to constrain the 18% that runs, and that ratio is what makes unreadable
+not scaffolding around the idea — it *is* the idea. 81% of the written artifact
+exists to constrain the 19% that runs, and that ratio is what makes unreadable
 generated code defensible at all. Any future version of this vision inherits that
 constraint — removing the verification does not yield a leaner version of the
 approach, it yields unreviewable code with no safety property whatsoever. That is
@@ -644,5 +644,5 @@ solved somewhere and I have not found it.
 ---
 
 *Artifact: https://github.com/simonsipl/Singularity — every number reproducible
-from a clean clone via `npm run check`, `npm run bench:matrix`,
+from a clean clone via `npm run check`, `npm run bench`,
 `npm run bench:parallel`, `npm run bench:ingest`.*

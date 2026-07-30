@@ -620,6 +620,44 @@ check('shard order beats validation order for foreign records (owner runs all ch
   assert.equal(L.statuses[0], X.STATUS_INVALID_AMOUNT, 'owner must apply full validation');
 });
 
+check('STAT_IN_USE covers every stat slot actually written (regression guard)', function () {
+  /* If a new STAT_* is added without bumping STAT_IN_USE, foldShardStats would
+   * silently drop it after a parallel run. Derive the real count from the
+   * exported STAT_* indices and compare. */
+  let maxIdx = -1;
+  for (const key in X) {
+    if (key.indexOf('STAT_') !== 0) continue;
+    if (key === 'STAT_SLOTS' || key === 'STAT_IN_USE') continue;
+    if (X[key] > maxIdx) maxIdx = X[key];
+  }
+  assert.equal(X.STAT_IN_USE, maxIdx + 1,
+    'STAT_IN_USE is ' + X.STAT_IN_USE + ' but the highest stat index is ' + maxIdx +
+    ' — foldShardStats would silently drop stat slots after a parallel run');
+  assert.ok(X.STAT_IN_USE <= X.STAT_SLOTS, 'STAT_IN_USE exceeds allocated slots');
+});
+
+check('every stat a shard writes survives the fold (no silent drop)', function () {
+  const n = 400, accounts = 16, W = 3;
+  const L = X.allocLedger(n, accounts);
+  X.resetLedger(L);
+  seedShardBatch(L, n, accounts);
+  const slabs = [];
+  for (let k = 0; k < W; k++) {
+    const slab = new Float64Array(16);
+    X.processBatchShard(L, n, k, W, slab);
+    slabs.push(slab);
+  }
+  /* sum the slabs independently, then compare against the fold */
+  const expected = new Float64Array(16);
+  for (let k = 0; k < W; k++) {
+    for (let s = 0; s < X.STAT_SLOTS; s++) expected[s] += slabs[k][s];
+  }
+  X.foldShardStats(L, slabs, W);
+  for (let s = 0; s < X.STAT_IN_USE; s++) {
+    assert.equal(L.stats[s], expected[s], 'stat slot ' + s + ' lost in the fold');
+  }
+});
+
 check('fee.bounds_sane: load-time guard exists in the exec source', function () {
   const fs = require('node:fs');
   const lint = require('../../tests/_source-lint.js');

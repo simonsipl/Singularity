@@ -7,7 +7,7 @@ features/<feature>/<workflow>.intent.ts  →  [AI compiler]  →  src/exec/<work
              (you write this)               (.cursorrules)  +  features/<feature>/<workflow>.assert.js
 ```
 
-Two reference workflows ship: `payments/bulk-settlement` (26 rules, 33 checks) and `clients/visit-profiling` (43 rules, 47 checks), plus benchmarks and the audit trail that reshaped them. **Starting a new project? Copy [`framework/`](framework/) — it is the whole kit**, smoke-tested to bootstrap clean.
+Two reference workflows ship: `payments/bulk-settlement` (31 rules, 41 checks) and `clients/visit-profiling` (44 rules, 49 checks), plus benchmarks and the audit trail that reshaped them. **Starting a new project? Copy [`framework/`](framework/) — it is the whole kit**, smoke-tested to bootstrap clean.
 
 ```bash
 node bin/singularity.js check
@@ -18,7 +18,7 @@ node --expose-gc --max-old-space-size=6144 tests/benchmark.js
 ```
 
 ```bash
-npm run bench:matrix
+npm run bench
 ```
 
 `check` gates three things mechanically: **drift** (is any exec unit older than the intent it was compiled from?), **verify** (every assert suite), and **decisions** (does every intent rule have recorded rationale?). Exit 0 means committable.
@@ -46,12 +46,12 @@ enforce that the generated code matches the contract.
 
 | Compared against | Result |
 |---|---|
-| Idiomatic JS (`.reduce`, spread per record) | **~9x faster** |
+| Idiomatic JS (`.reduce`, spread per record) | **~8.7x faster** |
 | *Disciplined* plain JS, tidy objects | **~1–1.5x** — near parity |
-| Same, but objects scattered across the heap (i.e. real life) | **5–12x faster** |
-| Small batch in an oversized arena | **it loses** (0.67x) |
+| Same, but objects scattered across the heap (i.e. real life) | **5–11x faster** |
+| Small batch in an oversized arena | **it loses** (0.71x) |
 | 8 worker threads vs 1 | **2.06x** — sublinear, and costs 8 cores |
-| Direct JSON→arena vs `JSON.parse` | **0.83x — slower**, but 668x less garbage |
+| Direct JSON→arena vs `JSON.parse` | **0.80x — slower**, but 350x less garbage |
 
 The original "13x faster" headline was measured against a strawman. An audit added the
 missing control and it collapsed to roughly parity. That correction is in the git
@@ -59,7 +59,7 @@ history rather than quietly edited out — the measurements are the interesting 
 and a number that survives scrutiny is worth more than a number that flatters.
 
 **So where's the actual win?** **Memory, not speed.** 18 MB off-heap vs 145 MB
-GC-scanned; 4.7 KB of garbage per batch vs 210 MB. That means no GC pauses, flat p99,
+GC-scanned; 4.6 KB of garbage per batch vs 210 MB. That means no GC pauses, flat p99,
 and ~4x more pods per node. On a memory-bound platform that is the bill, not the
 nanoseconds.
 
@@ -88,7 +88,7 @@ it with tests), and whether AI compilation is reproducible enough to stop commit
 generated output at all. Both are described in
 [RESEARCH.md §11](RESEARCH.md#11-where-this-needs-help), along with five others.
 
-Everything is reproducible from a clean clone: `npm run check`, `npm run bench:matrix`.
+Everything is reproducible from a clean clone: `npm run check`, `npm run bench`.
 If a number does not replicate on your hardware, that is worth knowing — please open
 an issue.
 
@@ -110,7 +110,7 @@ an issue.
 
 ## Measured baseline
 
-Node v24.13.1, win32/x64, 1,000,000 payment records, 4,096 accounts. Output asserted byte-identical between both implementations *before* any timing was recorded. Reproduce with `npm run bench`.
+Node v24.13.1, win32/x64, 1,000,000 payment records, 4,096 accounts. Output asserted byte-identical between both implementations *before* any timing was recorded. Reproduce with `npm run bench` (the variable-isolated matrix).
 
 | Phase | Best | Throughput | Per record |
 |---|---|---|---|
@@ -120,7 +120,7 @@ Node v24.13.1, win32/x64, 1,000,000 payment records, 4,096 accounts. Output asse
 
 | Memory | Idiomatic | Singularity |
 |---|---|---|
-| Allocation churn per batch | 210.23 MB | 4.7 KB |
+| Allocation churn per batch | 210.22 MB | 4.6 KB |
 | Input residency (1M records) | 144.96 MB, on-heap, GC-scanned | 18.15 MB, off-heap, not GC-scanned |
 
 **13.0x** on the full batch, **15.7x** on the traversal, **5.9x** end-to-end including data ingest.
@@ -144,45 +144,45 @@ On a full-field scan over allocation-ordered monomorphic objects, the SoA arena 
 
 | Variant | Best | Per rec | vs exec |
 |---|---|---|---|
-| `hof` — `.reduce` + spread per record | 130.37 ms | 130.4 ns | 8.6x slower |
-| `aos-seq` — plain loop, allocation-ordered objects | 22.31 ms | 22.3 ns | 1.5x slower |
-| `aos-scat` — same objects, scattered across the heap | 79.31 ms | 79.3 ns | 5.2x slower |
-| `aos-poly` — 8 hidden classes, megamorphic sites | 22.39 ms | 22.4 ns | 1.5x slower |
-| `soa-exec` — the arena | 15.18 ms | 15.2 ns | 1.0x |
+| `hof` — `.reduce` + spread per record | 127.72 ms | 127.7 ns | 8.7x slower |
+| `aos-seq` — plain loop, allocation-ordered objects | 22.29 ms | 22.3 ns | 1.5x slower |
+| `aos-scat` — same objects, scattered across the heap | 75.53 ms | 75.5 ns | 5.1x slower |
+| `aos-poly` — 8 hidden classes, megamorphic sites | 22.17 ms | 22.2 ns | 1.5x slower |
+| `soa-exec` — the arena | 14.72 ms | 14.7 ns | 1.0x |
 
 **Partial scan** (sum valid amounts; reads 1 field of 5; 1M records):
 
 | Variant | Best | Per rec | vs exec |
 |---|---|---|---|
-| `hof` — `.filter` + `.reduce` | 21.45 ms | 21.4 ns | 8.8x slower |
-| `aos-seq` | 5.54 ms | 5.5 ns | 2.3x slower |
-| `aos-scat` | 28.57 ms | 28.6 ns | **11.8x slower** |
-| `aos-poly` | 5.44 ms | 5.4 ns | 2.2x slower |
-| `soa-exec` | 2.43 ms | 2.4 ns | 1.0x |
+| `hof` — `.filter` + `.reduce` | 19.62 ms | 19.6 ns | 8.0x slower |
+| `aos-seq` | 5.42 ms | 5.4 ns | 2.2x slower |
+| `aos-scat` | 27.24 ms | 27.2 ns | **11.2x slower** |
+| `aos-poly` | 5.34 ms | 5.3 ns | 2.2x slower |
+| `soa-exec` | 2.44 ms | 2.4 ns | 1.0x |
 
 **Hot-subset sweep** (full pipeline over the first *s* records of a 1M-object pool):
 
 | Records | aos-seq | aos-scat | soa-exec | scat/exec |
 |---|---|---|---|---|
-| 10,000 | 0.20 ms | 0.27 ms | 0.40 ms | **0.67x — exec loses** |
-| 100,000 | 2.12 ms | 3.32 ms | 1.66 ms | 2.0x |
-| 1,000,000 | 23.02 ms | 80.98 ms | 15.21 ms | 5.3x |
+| 10,000 | 0.19 ms | 0.27 ms | 0.38 ms | **0.71x — exec loses** |
+| 100,000 | 2.08 ms | 3.14 ms | 1.62 ms | 1.9x |
+| 1,000,000 | 22.12 ms | 76.03 ms | 14.73 ms | 5.2x |
 
 What the matrix actually says:
 
-- **Memory locality dwarfs everything else.** Scattering identical objects across the heap — same shape, same logical order — costs 3.6x on the full pipeline and 5x on the partial scan. Meanwhile 8-way shape polymorphism, the thing folk wisdom warns about, cost ~nothing here (22.39 vs 22.31 ms): on a memory-bound loop the pointer chase is the tax, not the map check. `aos-scat` is not an exotic case; it is what a long-lived object cache looks like after GC and time.
-- **The arena's decisive win is the partial scan** — 11.8x over scattered objects — because a cache line of `Int32Array` carries 16 useful values while a cache line of object graph is mostly headers and pointers. The arena is also *immune to heap history by construction*: `aos-seq` measured 12.9 ms standalone but 22.3 ms with 435 MB of other objects live, so plain-object performance depends on allocation history the code does not control. The exec's numbers do not move.
-- **The exec loses below ~50k records in an oversized arena** (0.67x at 10k), because `resetLedger` is O(capacity), not O(batch): it zeroes the full 1M-slot arena to process 10k records. Right-size the arena to the batch, or accept the flat reset tax. A benchmark that only showed 1M-record batches would have hidden this.
+- **Memory locality dwarfs everything else.** Scattering identical objects across the heap — same shape, same logical order — costs 3.4x on the full pipeline and 5x on the partial scan. Meanwhile 8-way shape polymorphism, the thing folk wisdom warns about, cost ~nothing here (22.17 vs 22.29 ms — the megamorphic variant was marginally *faster*, i.e. inside noise): on a memory-bound loop the pointer chase is the tax, not the map check. `aos-scat` is not an exotic case; it is what a long-lived object cache looks like after GC and time.
+- **The arena's decisive win is the partial scan** — 11.2x over scattered objects — because a cache line of `Int32Array` carries 16 useful values while a cache line of object graph is mostly headers and pointers. The arena is also *immune to heap history by construction*: `aos-seq` measured 12.9 ms standalone but 22.3 ms with 435 MB of other objects live, so plain-object performance depends on allocation history the code does not control. The exec's numbers do not move.
+- **The exec loses below ~50k records in an oversized arena** (0.71x at 10k), because `resetLedger` is O(capacity), not O(batch): it zeroes the full 1M-slot arena to process 10k records. Right-size the arena to the batch, or accept the flat reset tax. A benchmark that only showed 1M-record batches would have hidden this.
 
-The honest summary: **vs disciplined plain JavaScript, the exec is ≈1–1.5x on full scans, ~2x on partial scans over well-ordered objects, and 5–12x when the object graph has real-world heap entropy** — plus the memory claims (18 MB off-heap vs 145 MB GC-scanned; 4.7 KB vs 210 MB churn per batch) which hold everywhere and are the load-bearing ones for infrastructure cost.
+The honest summary: **vs disciplined plain JavaScript, the exec is ≈1–1.5x on full scans, ~2x on partial scans over well-ordered objects, and 5–11x when the object graph has real-world heap entropy** — plus the memory claims (18 MB off-heap vs 145 MB GC-scanned; 4.6 KB vs 210 MB churn per batch) which hold everywhere and are the load-bearing ones for infrastructure cost.
 
 ### Read this before quoting those numbers
 
 Three honest caveats, because the rest of this document depends on them:
 
-1. **The allocation figures required a methodology correction.** A single-shot `heapUsed` delta around a ~15 ms window reported *+18.91 MB* for the exec path — an artifact, not garbage. V8 continues sweeping after `global.gc()` returns, so the delta grows with live-set size and elapsed time regardless of whether the measured code allocates. A no-op control of equal duration reported 4.88 MB. The benchmark now amortizes over 100 batches, samples the exec path before any object graph exists, and prints the no-op floor beside every figure. The 4.7 KB number is clean-heap and falsifiable.
+1. **The allocation figures required a methodology correction.** A single-shot `heapUsed` delta around a ~15 ms window reported *+18.91 MB* for the exec path — an artifact, not garbage. V8 continues sweeping after `global.gc()` returns, so the delta grows with live-set size and elapsed time regardless of whether the measured code allocates. A no-op control of equal duration reported 4.88 MB. The benchmark now amortizes over 100 batches, samples the exec path before any object graph exists, and prints the no-op floor beside every figure. The 4.6 KB number is clean-heap and falsifiable.
 
-2. **The speedup depends on what you compare against and how your data lives.** The matrix below measures it: ~8.6x against idiomatic HOF style, **~1–1.5x against disciplined plain JavaScript on well-ordered objects**, 5–12x once the object graph is scattered the way long-lived heaps really are — and a loss at small batches in an oversized arena. Quote the matrix row that matches your situation, not the headline.
+2. **The speedup depends on what you compare against and how your data lives.** The matrix below measures it: ~8.7x against idiomatic HOF style, **~1–1.5x against disciplined plain JavaScript on well-ordered objects**, 5–11x once the object graph is scattered the way long-lived heaps really are — and a loss at small batches in an oversized arena. Quote the matrix row that matches your situation, not the headline.
 
 3. **13x on a hot loop is not 13x on a service.** This is the single most important caveat in this document, and [Part 3](#part-3--infrastructure-economics) is built around it rather than around the headline number.
 
@@ -235,7 +235,7 @@ Three rules make this work:
 
 ### 1.3 Intents are service contracts you already needed
 
-`payment-processor.intent.ts` is a TypeScript interface plus 26 numbered, machine-readable rules. It is simultaneously the compiler input, the API contract, the test specification, and the code review artifact. One file, and it is the only file a human edits.
+`payment-processor.intent.ts` is a TypeScript interface plus 31 numbered, machine-readable rules. It is simultaneously the compiler input, the API contract, the test specification, and the code review artifact. One file, and it is the only file a human edits.
 
 This collapses a category of microservice drift. The usual failure — the OpenAPI spec, the validation layer, the tests, and the implementation each encoding a slightly different notion of "valid payment" — becomes structurally impossible, because all four are generated from one source and the generated suite fails if they disagree.
 
@@ -343,7 +343,7 @@ For interactive traffic, p99 matters more than mean, and this is where the alloc
 
 The idiomatic path churns **210 MB per batch**. Sustain a few batches per second and you are allocating at ~1 GB/s, which drives continuous scavenges and periodic major GC over a large live set. Those pauses land on unrelated in-flight requests — the classic symptom of a service whose mean latency looks fine and whose p99 is unexplainable.
 
-The exec path allocates **4.7 KB per batch** and keeps its working set off-heap where the mark-sweep collector never scans it. There is nothing to collect, so there is no pause to attribute.
+The exec path allocates **4.6 KB per batch** and keeps its working set off-heap where the mark-sweep collector never scans it. There is nothing to collect, so there is no pause to attribute.
 
 Since capacity planning for interactive services is driven by p99 against an SLO — not by mean throughput — a flatter tail translates more directly into fewer instances than raw speed does.
 
@@ -384,7 +384,7 @@ So the honest question is not "how much faster is the loop" but **"what was I ac
 
 ### 3.2 Where the savings actually are
 
-**Memory density (usually the binding constraint).** In Kubernetes, pod density per node is typically limited by memory requests, not CPU. The measured difference in resident input alone is 145 MB versus 18 MB, with per-batch churn of 210 MB versus 4.7 KB. Churn is what forces heap headroom: you must provision for peak allocation plus GC slack, not for live data.
+**Memory density (usually the binding constraint).** In Kubernetes, pod density per node is typically limited by memory requests, not CPU. The measured difference in resident input alone is 145 MB versus 18 MB, with per-batch churn of 210 MB versus 4.6 KB. Churn is what forces heap headroom: you must provision for peak allocation plus GC slack, not for live data.
 
 *Model, assumptions stated:*
 
@@ -467,7 +467,7 @@ The discipline that makes this safe is already in the ruleset: **equivalence is 
 
 Not code generation — that is the mechanism, not the value. The value is that **the optimization ceiling stops being bounded by what a human will maintain.**
 
-Nobody hand-writes flattened, hand-inlined, arena-offset code with an adversarial suite for a fee calculation, because the maintenance cost is indefensible against the benefit. When generation and verification are mechanical, that calculus inverts: the human maintains a 26-rule contract that reads like a specification, and the machine-hostile implementation becomes disposable. Regenerate it when the contract changes; never read it.
+Nobody hand-writes flattened, hand-inlined, arena-offset code with an adversarial suite for a fee calculation, because the maintenance cost is indefensible against the benefit. When generation and verification are mechanical, that calculus inverts: the human maintains a 31-rule contract that reads like a specification, and the machine-hostile implementation becomes disposable. Regenerate it when the contract changes; never read it.
 
 The infrastructure saving is downstream of that inversion, and it is the honest version of the pitch: not "AI writes faster code," but "AI removes the maintenance cost that previously made this class of optimization irrational."
 
@@ -495,14 +495,14 @@ Ordered by how much they unblock, with current status stated honestly:
 | Item | Status |
 |---|---|
 | Bootstrap kit (`framework/`) — copy into an empty repo, `check` passes, skeleton feature included | **shipped** — smoke-tested end to end |
-| Sharded parallel execution across `worker_threads` (§1.4) | **shipped** — byte-identical to sequential through real threads; 2.06x at 8 workers, sublinear by design ([0014](features/payments/decisions/0014-shard-by-account.md)) |
-| Direct JSON-to-arena ingest (§3.3) | **shipped** — 668x less allocation, but 0.83x the speed of `JSON.parse`; an allocation win, not a speed win ([0015](decisions/0015-direct-json-ingest.md)) |
+| Sharded parallel execution across `worker_threads` (§1.4) | **shipped** — byte-identical to sequential through real threads; 1.16x/1.79x/2.06x at 2/4/8 workers, sublinear by design ([0014](features/payments/decisions/0014-shard-by-account.md)) |
+| Direct JSON-to-arena ingest (§3.3) | **shipped** — 350x less allocation, but 0.80x the speed of `JSON.parse`; an allocation win, not a speed win. Rejects out-of-range values rather than wrapping ([0015](decisions/0015-direct-json-ingest.md)) |
 | Fee-table bounds validation at load time | **shipped** — module refuses to load if `MIN_FEE > MAX_FEE` |
 | Benchmark matrix isolating layout, allocation style, shape and heap entropy | **shipped** — `tests/benchmark-matrix.js`, all variants equivalence-gated |
 | Schema-driven arena runtime (`src/runtime/arena.js`) | **shipped** — 23-check suite, hidden-class identity verified via `%HaveSameMap` |
 | `attachLedger` for zero-copy worker fan-out (§1.4) | **shipped** — memory sharing proven both directions |
 | `ArrayBuffer` fallback for non-isolated browser contexts (§2.4) | **shipped** — `shared: false` on any schema |
-| Decision records + coverage enforcement (`docs/DECISIONS.md`) | **shipped** — 26/26 rules documented, stale references fail the build |
+| Decision records + coverage enforcement (`docs/DECISIONS.md`) | **shipped** — 75/75 rules documented, stale references fail the build |
 | CLI (`drift` / `verify` / `decisions` / `layout` / `check`) | **shipped** |
 | OpenAPI / JSON Schema generation from intent rules | roadmap |
 | Typed client SDK generation | roadmap |

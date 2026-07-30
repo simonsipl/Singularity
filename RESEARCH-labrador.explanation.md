@@ -136,7 +136,7 @@ Here's where Biscuit earns her dinner.
 | Room the payments take up | a big suitcase | a school backpack |
 | Mess made each time | a van of wrapping paper | a matchbox |
 
-**That second row is the huge one.** Not a bit less mess. About **forty-five
+**That second row is the huge one.** Not a bit less mess. About **forty-seven
 thousand times** less mess.
 
 And here's why that's worth actual money: companies rent computers a bit like
@@ -176,7 +176,7 @@ mention:
 
 > **Nobody would ever hand-write code this fiddly for a job this small.**
 
-Writing all those cramped scribbles and thirty-nine tricky questions, by hand, for
+Writing all those cramped scribbles and forty-one tricky questions, by hand, for
 a fee calculator? Any sensible person would say "that's not worth my week" — and
 they'd be right.
 
@@ -236,8 +236,8 @@ and honestly a better question than the one we started with.
 We counted up everything written for this project:
 
 ```
-Code that actually does the work:     1,159 lines
-Stuff that checks and explains it:    5,165 lines
+Code that actually does the work:     1,220 lines
+Stuff that checks and explains it:    5,317 lines
 ```
 
 **Eight out of every ten lines exist to make the other two trustworthy.**

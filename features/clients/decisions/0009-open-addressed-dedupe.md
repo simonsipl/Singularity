@@ -63,6 +63,31 @@ hash wins. That is stated in the contract rather than left as an accident.
   [[0011]], which means the framework also cannot detect a *bad* hash function.
   Hash quality is the caller's responsibility.
 
+- **A 32-bit hash is too narrow at scale, and the risk is worse than intuition
+  suggests.** Two distinct phone numbers sharing a hash are reported as a
+  duplicate and the second client is *rejected* — a real customer silently
+  refused. This is the birthday problem over the 32-bit hash space, not over the
+  table size, so it grows quadratically:
+
+  | Clients | P(at least one false duplicate) |
+  |---|---|
+  | 1,000 | 0.01% |
+  | 10,000 | 1.2% |
+  | 50,000 | 25% |
+  | **100,000** | **69%** |
+  | 200,000 | 99% |
+
+  An external review flagged this and estimated ~1.2% at 100,000 clients; the
+  correct figure is **69%** — their number corresponds to 10,000. The finding was
+  right and materially understated.
+
+  `collisionRiskFor(clientCount)` is exported so a caller can compute this for
+  their own scale rather than discovering it in production. **Above roughly
+  10,000 clients a 32-bit hash is not defensible** and the field should widen to
+  64 bits (two `u32` lanes) or the check should fall back to comparing real
+  identifiers. Not yet implemented; the schema change is straightforward, the
+  contract change to carry a second lane is the work.
+
 ## Alternatives rejected
 
 - **`Map` or plain object.** Allocates per entry, lands on the GC heap, and cannot

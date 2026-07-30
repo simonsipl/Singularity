@@ -52,7 +52,7 @@ node --expose-gc --max-old-space-size=6144 tests/benchmark.js
 ```
 
 ```bash
-npm run bench:matrix
+npm run bench
 ```
 
 ```bash
@@ -67,10 +67,10 @@ recorded rationale?).
 
 | Feature | Workflow | Rules | Checks |
 |---|---|---|---|
-| payments | `bulk-settlement` | 31 | 39 |
-| clients | `visit-profiling` | 43 | 47 |
+| payments | `bulk-settlement` | 31 | 41 |
+| clients | `visit-profiling` | 44 | 49 |
 | (framework) | `arena` runtime | — | 23 |
-| (framework) | `ingest` runtime | — | 18 |
+| (framework) | `ingest` runtime | — | 20 |
 | (framework) | kit sync | — | 13 |
 
 ## Invariants
@@ -107,15 +107,16 @@ waive explicitly. 7. `singularity check` green.
   field.
 - A benchmark baseline must differ from the candidate in exactly one variable.
   The original 13x headline conflated memory layout with allocation style; the
-  variable-isolated comparison is `tests/benchmark-matrix.js` (~1–1.5x vs
-  disciplined plain JS on full scans, 5–12x under heap entropy). Give each
+  variable-isolated comparison is `tests/benchmark-matrix.js`, which `npm run
+  bench` now runs by default (~1–1.5x vs disciplined plain JS on full scans,
+  5–11x under heap entropy). Give each
   variant its own kernel copy or inline caches cross-pollute the numbers.
 - `resetLedger` is O(arena capacity), not O(batch). A 10k batch in a 1M-slot
-  arena loses to a plain loop (0.67x). Right-size arenas to workloads.
+  arena loses to a plain loop (0.71x). Right-size arenas to workloads.
 - Parallel shards by ACCOUNT, never by index range — index ranges race on
   balance slots and look fine in small tests. Every shard scans the whole batch,
-  so scaling is sublinear (2.06x at 8 workers) and skewed accounts serialise.
+  so scaling is sublinear (1.16x/1.79x/2.06x at 2/4/8 workers) and skewed accounts serialise.
   See `decisions/0014`.
-- Direct JSON ingest is an ALLOCATION win, not a speed win: 668x less garbage but
-  0.83x the speed of native `JSON.parse`. Never sell it as faster. It is also
+- Direct JSON ingest is an ALLOCATION win, not a speed win: 350x less garbage but
+  0.80x the speed of native `JSON.parse`. Never sell it as faster. It is also
   NOT atomic — the returned count is the commit point. See `decisions/0015`.

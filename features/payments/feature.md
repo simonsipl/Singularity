@@ -18,8 +18,8 @@ account has enough, then debit `amount + fee` or reject with a reason.
 Balances mutate in order, so a payment sees the effect of every payment before it
 in the same batch. That is deliberate and load-bearing.
 
-- Contract: [`bulk-settlement.intent.ts`](bulk-settlement.intent.ts) — 26 rules
-- Verification: [`bulk-settlement.assert.js`](bulk-settlement.assert.js) — 33 checks
+- Contract: [`bulk-settlement.intent.ts`](bulk-settlement.intent.ts) — 31 rules
+- Verification: [`bulk-settlement.assert.js`](bulk-settlement.assert.js) — 41 checks
 - Compiled to: `src/exec/bulk-settlement.exec.js` *(generated — do not read or edit)*
 
 ## Read before changing anything here
@@ -55,7 +55,7 @@ them looks like ordinary independent statements:
 touch the same balance. Output is byte-identical to sequential for any shard
 count, asserted through real threads.
 
-Measured on 24 logical cores: **1.04x at 2 workers, 1.50x at 4, 2.06x at 8** —
+Measured on 24 logical cores: **1.16x at 2 workers, 1.79x at 4, 2.06x at 8** —
 sublinear by construction, because every shard scans the whole batch to find its
 records. Spawn costs 24–37 ms against a 15 ms batch, so this is only ever worth
 it for a long-lived pool. Read [0014](decisions/0014-shard-by-account.md) before
@@ -68,7 +68,7 @@ node tests/benchmark-parallel.js
 ## Known gaps
 
 - `resetLedger` cost is O(arena capacity), not O(batch): at 10,000 records in a
-  1,000,000-slot arena the exec loses to a plain loop (0.67x, see
+  1,000,000-slot arena the exec loses to a plain loop (0.71x, see
   `tests/benchmark-matrix.js`). Size the arena to the workload.
 - Fee bounds are compile-time constants, and the module now refuses to load if
   `MIN_FEE > MAX_FEE` ([0007](decisions/0007-fee-clamp-order.md)). When fee tables
