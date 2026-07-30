@@ -216,15 +216,25 @@ Grown-up scientists call that a *control*. It's how you catch yourself being wro
 
 ---
 
-## 8. So how much faster is it, really?
+## 8. So how much faster is it, really? (the part where we got caught)
 
-All of these are real measurements from a real computer, doing a real million payments.
+All of these are real measurements from a real computer, doing a real million payments. And this section has a confession in it.
 
-**Time.** Imagine the old way takes **13 minutes**. Our way takes **1 minute**.
+**The first race.** The messy old way took about **13 minutes** and our bucket way took about **1 minute** (in pretend-minutes — really it's fractions of a blink). We were very pleased with ourselves. Thirteen times faster!
 
-(The true numbers are 192 thousandths of a second versus 15 thousandths. Both are far too quick to see. But "13 minutes versus 1 minute" is the right *feeling*.)
+**The rematch.** Then somebody sensible asked an awkward question: *"Was the old way slow because of the lunchboxes... or just because it was messy?"* So we raced again — against a **tidy** lunchbox way. Same lunchboxes, but no litter, no faffing about.
 
-**Mess.** A van of wrapping paper, versus a matchbox.
+And the tidy lunchbox way **almost tied with us.** Some days it was even a whisker faster.
+
+Ouch. Our "thirteen times faster" was mostly just "thirteen times less messy." Beating someone who is carrying a wheelbarrow of litter doesn't make you fast.
+
+**So when do the buckets actually win?** We kept racing, fairly this time, and found out:
+
+- **When the lunchboxes are scattered all over the house** — which is what happens to lunchboxes in real life, once they've been around a while — Biscuit has to run to a different room for every single box. Buckets win by **5 times**.
+- **When you only want ONE thing from each box** — say, just the amounts — with lunchboxes, Biscuit opens every box and carries everything anyway. With buckets, she goes straight to the amounts bucket. Buckets win by **12 times**. This is her favourite race.
+- **And sometimes we LOSE.** If there are only a few payments but our bucket is enormous, we waste time washing out the whole giant bucket for three biscuits' worth of work. The tidy lunchbox way beats us there. We wrote that on the tin too, because hiding it would be fibbing.
+
+**Mess.** A van of wrapping paper, versus a matchbox. (This one survived the rematch completely — the tidy way still can't share its lunchboxes between helpers, and the messy way is still a van.)
 
 **Space.** The normal way needs a great big suitcase to hold the million payments. Ours needs a **school backpack** — about eight times smaller.
 
@@ -296,18 +306,21 @@ You now understand all of these. Here's what they're called.
 | The 32 mean questions | A *test suite* |
 | Both ways must agree | *Differential testing* |
 | Measuring "nothing" to check the ruler | A *control* |
+| Racing someone slow on purpose | A *strawman baseline* |
+| The fair rematch | *Isolating variables* |
 | The school bus problem | *Amdahl's law* |
 | Fitting more backpacks in the fridge | *Pod density* |
 
 ---
 
-## The four things worth remembering
+## The five things worth remembering
 
 1. **Sort things into buckets, not boxes**, so the dog's mouth is always full of useful stuff.
 2. **Don't make a mess**, so nobody ever has to stop the game to sweep.
 3. **Check it's right before you check it's fast.** Fast and wrong is just wrong.
 4. **When a measurement surprises you, test your ruler on something you already know the answer to.**
+5. **Check who you were racing.** Beating someone carrying a wheelbarrow doesn't make you fast. Race someone quick before you brag — and write down the races you lose.
 
-Number four is the one you'll use for the rest of your life, whatever you end up doing.
+Numbers four and five are the ones you'll use for the rest of your life, whatever you end up doing.
 
 Good girl, Biscuit. 🦮

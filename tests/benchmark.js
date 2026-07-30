@@ -3,6 +3,12 @@
  * idiomatic human implementation vs. compiled exec unit, same contract,
  * same input bytes, asserted-identical output.
  *
+ * CAVEAT: this file's baseline conflates two variables — AoS layout AND
+ * allocation-heavy HOF style — so its headline ratio measures coding style as
+ * much as the framework. The variable-isolated comparison is
+ * tests/benchmark-matrix.js; the honest single control is
+ * tests/benchmark-honest.js. Quote those.
+ *
  * run: node --expose-gc --max-old-space-size=6144 tests/benchmark.js
  */
 

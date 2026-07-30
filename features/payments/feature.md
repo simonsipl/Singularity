@@ -49,6 +49,9 @@ them looks like ordinary independent statements:
 
 ## Known gaps
 
+- `resetLedger` cost is O(arena capacity), not O(batch): at 10,000 records in a
+  1,000,000-slot arena the exec loses to a plain loop (0.67x, see
+  `tests/benchmark-matrix.js`). Size the arena to the workload.
 - Fee bounds are compile-time constants. Per-tenant fee tables would need startup
   validation that `MIN <= MAX`, which does not exist ([0007](decisions/0007-fee-clamp-order.md)).
 - Declined payments report a fee they were not charged. Intentional, and a real

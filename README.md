@@ -17,6 +17,10 @@ node bin/singularity.js check
 node --expose-gc --max-old-space-size=6144 tests/benchmark.js
 ```
 
+```bash
+npm run bench:matrix
+```
+
 `check` gates three things mechanically: **drift** (is any exec unit older than the intent it was compiled from?), **verify** (every assert suite), and **decisions** (does every intent rule have recorded rationale?). Exit 0 means committable.
 
 ---
@@ -107,7 +111,7 @@ Three honest caveats, because the rest of this document depends on them:
 
 1. **The allocation figures required a methodology correction.** A single-shot `heapUsed` delta around a ~15 ms window reported *+18.91 MB* for the exec path — an artifact, not garbage. V8 continues sweeping after `global.gc()` returns, so the delta grows with live-set size and elapsed time regardless of whether the measured code allocates. A no-op control of equal duration reported 4.88 MB. The benchmark now amortizes over 100 batches, samples the exec path before any object graph exists, and prints the no-op floor beside every figure. The 4.7 KB number is clean-heap and falsifiable.
 
-2. **The speedup is on integer arithmetic over a dense batch.** Validation, truncating-integer fee math, a balance check, sequential mutation. Workloads dominated by string handling, I/O waits, or polymorphic data will not see 13x. Some will see 1x.
+2. **The speedup depends on what you compare against and how your data lives.** The matrix below measures it: ~8.6x against idiomatic HOF style, **~1–1.5x against disciplined plain JavaScript on well-ordered objects**, 5–12x once the object graph is scattered the way long-lived heaps really are — and a loss at small batches in an oversized arena. Quote the matrix row that matches your situation, not the headline.
 
 3. **13x on a hot loop is not 13x on a service.** This is the single most important caveat in this document, and [Part 3](#part-3--infrastructure-economics) is built around it rather than around the headline number.
 
@@ -301,7 +305,7 @@ Amdahl's law governs, and it is unforgiving. If the payment loop is 10% of your 
 speedup = 1 / (0.90 + 0.10/13) = 1.10x
 ```
 
-**A 13x kernel produced a 10% service-level improvement.** Anyone selling you the 13x as an infrastructure number is selling you a benchmark, not a service.
+**A 13x kernel produced a 10% service-level improvement.** Anyone selling you the 13x as an infrastructure number is selling you a benchmark, not a service. And that calculation uses the *most flattering* ratio in the matrix — against disciplined plain JavaScript the kernel gain on a full scan is ~1.5x, at which point the service-level effect rounds to zero.
 
 There is a sharper version of this. At realistic request rates, the arithmetic was **never your bottleneck**. Measured single-core throughput is 67.83 M rec/s; a service sustaining 500,000 records/sec needs roughly 0.007 of one core for the payment logic. You do not have a compute problem at that scale, and optimizing compute cannot save you money you were not spending.
 
@@ -419,6 +423,7 @@ Ordered by how much they unblock, with current status stated honestly:
 
 | Item | Status |
 |---|---|
+| Benchmark matrix isolating layout, allocation style, shape and heap entropy | **shipped** — `tests/benchmark-matrix.js`, all variants equivalence-gated |
 | Schema-driven arena runtime (`src/runtime/arena.js`) | **shipped** — 23-check suite, hidden-class identity verified via `%HaveSameMap` |
 | `attachLedger` for zero-copy worker fan-out (§1.4) | **shipped** — memory sharing proven both directions |
 | `ArrayBuffer` fallback for non-isolated browser contexts (§2.4) | **shipped** — `shared: false` on any schema |

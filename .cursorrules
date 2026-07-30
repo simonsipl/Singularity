@@ -236,6 +236,17 @@ When benchmarking exec code against an idiomatic baseline:
   noise, and you must label it as such.
 - **Assert result equivalence before reporting any timing.** A faster wrong
   answer is not a result.
+- **Isolate variables.** A baseline must differ from the candidate in exactly
+  ONE dimension — memory layout, allocation style, shape entropy, or heap
+  entropy. A ratio against a baseline that differs in several is marketing,
+  not measurement. (The original headline here conflated two and fell from
+  13x to ~1x when a control separated them.)
+- **One kernel copy per variant.** A shared kernel function lets a polymorphic
+  variant poison the inline caches of monomorphic variants measured after it.
+- **Report where the candidate loses** with the same prominence as where it
+  wins. An arena reset is O(capacity); small batches in oversized arenas lose
+  to plain loops, and hiding that by benchmarking only full batches is a lie
+  of omission.
 - Report the arena/ingest cost separately and honestly. Do not hide data
   marshalling outside the timed region and then claim the speedup.
 
