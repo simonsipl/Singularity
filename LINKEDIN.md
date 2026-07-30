@@ -54,6 +54,9 @@ funded, or taken seriously.
 - ✅ One number that makes you look worse ("it loses on small batches")
 - ✅ The repo link, so claims are checkable
 - ✅ "One machine, one Node version" when quoting benchmarks
+- ✅ **What it cost you in tokens.** Nearly nobody publishes this, it is directly
+  relevant to whether AI-assisted work is actually efficient, and a concrete
+  dollar figure is one of the most credibility-building things in the post
 
 The unflattering number is not modesty — it is the strongest credibility signal
 in the post. Readers assume everyone hides the bad numbers. Publishing one buys
@@ -105,12 +108,18 @@ trust for every other figure you cite.
 > 82% of what got written exists to constrain the 18% that actually runs. That
 > ratio *is* the approach.
 >
+> Research experiment, not a product. Written end to end by Claude Fable 5 — I
+> steered, I didn't type it. Cost: about $100 in tokens, which I'm publishing
+> because every "AI makes you efficient" claim quietly omits what the AI burned.
+>
 > Everything's public, including the correction commits:
 > github.com/simonsipl/Singularity
 >
 > Try to break it. That's what it's for.
 
-*~290 words. Tighten the bullet block if it runs long in preview.*
+*~325 words with the cost paragraph. Tighten the bullet block if it runs long in
+preview. The cost line works in any of these drafts — see the note under Draft B
+for why it earns its space.*
 
 ---
 
@@ -130,9 +139,30 @@ trust for every other figure you cite.
 > The lesson isn't "AI writes fast code." It's that when verification is
 > mandatory, your marketing can't survive your own test suite. Mine didn't.
 >
+> Bear in mind this was a research experiment, not a product. Every line was
+> written by Claude Fable 5 — I steered, I didn't type it. It cost me about $100
+> in tokens, which I'm publishing precisely because nobody ever does: every "AI
+> makes you efficient" claim quietly omits what the AI itself burned.
+>
+> $100 and a fortnight to find out the speedup was ~1x. Now you don't have to.
+>
 > github.com/simonsipl/Singularity
 
-*~110 words. Best if you want reach over depth.*
+*~165 words. Still the reach-oriented draft; the cost disclosure is worth the
+extra length because almost nobody publishes it.*
+
+**On the cost line.** It is not a disclaimer — it is one of the strongest items
+in the post, and it connects directly to a gap named in
+[RESEARCH.md §4](RESEARCH.md): inference cost is systematically excluded from
+efficiency claims. Three cautions:
+
+- Say **"about $100"** unless you have the exact invoice figure. A precise number
+  invites "how did you measure that?", and approximations are unimpeachable.
+- Say **"I steered, I didn't type it"** rather than "totally vibe coded". Your own
+  research concludes that direction-setting was human throughout; claiming zero
+  human input hands a critic a contradiction from your own repo.
+- Put it **near the end**. At the top it undercuts the hook; at the bottom it
+  lands as an honest sign-off, which is where it does the most work.
 
 ---
 
