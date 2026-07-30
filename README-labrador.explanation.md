@@ -323,4 +323,14 @@ You now understand all of these. Here's what they're called.
 
 Numbers four and five are the ones you'll use for the rest of your life, whatever you end up doing.
 
+---
+
+## Want the other half of the story?
+
+This page explained **what we built**. There's a companion page —
+[RESEARCH-labrador](RESEARCH-labrador.explanation.md) — explaining **what we were
+trying to find out**, and which of our five guesses turned out to be wrong.
+
+(Two were right. Two needed fixing. One was asking the wrong question entirely.)
+
 Good girl, Biscuit. 🦮

@@ -30,7 +30,13 @@ npm run bench:matrix
 An experiment: **the code was AI-generated ("vibe-coded"), on purpose**, to see what
 happens when a model writes deliberately unreadable, machine-optimised code and the
 only thing keeping it honest is mandatory verification. What follows is what actually
-happened, including the parts that went badly.
+happened, measured — including the parts that did not go the way I expected.
+
+This is published to start a conversation, not to win one. The hypotheses behind it
+and an honest account of which parts already work, which need something that does not
+exist yet, and where help would matter most are in **[RESEARCH.md](RESEARCH.md)**
+(or [the plain-language version](RESEARCH-labrador.explanation.md), if you'd rather
+skip the jargon).
 
 **The idea.** You write a contract (`*.intent.ts`) — rules, no logic. A model compiles
 it into procedural TypedArray code nobody reads. Tests, a decision log, and a CLI gate
@@ -49,7 +55,8 @@ enforce that the generated code matches the contract.
 
 The original "13x faster" headline was measured against a strawman. An audit added the
 missing control and it collapsed to roughly parity. That correction is in the git
-history, not quietly edited out.
+history rather than quietly edited out — the measurements are the interesting part,
+and a number that survives scrutiny is worth more than a number that flatters.
 
 **So where's the actual win?** **Memory, not speed.** 18 MB off-heap vs 145 MB
 GC-scanned; 4.7 KB of garbage per batch vs 210 MB. That means no GC pauses, flat p99,
@@ -75,7 +82,15 @@ our own.
 inside an otherwise normal codebase: yes. As a whole backend: no. Most code never gets
 hot enough to repay the tax.
 
+**Where it goes next.** The most useful open problems are an executable subset of the
+intent language (which would let the compiler verify conformance instead of sampling
+it with tests), and whether AI compilation is reproducible enough to stop committing
+generated output at all. Both are described in
+[RESEARCH.md §11](RESEARCH.md#11-where-this-needs-help), along with five others.
+
 Everything is reproducible from a clean clone: `npm run check`, `npm run bench:matrix`.
+If a number does not replicate on your hardware, that is worth knowing — please open
+an issue.
 
 **Analysis of the hypotheses behind this — including where the evidence contradicted them — is in [RESEARCH.md](RESEARCH.md).**
 
@@ -504,6 +519,8 @@ Ordered by how much they unblock, with current status stated honestly:
 | [`CLAUDE.md`](CLAUDE.md) | Entry point for agents |
 | [`docs/STRUCTURE.md`](docs/STRUCTURE.md) | **Why there are two trees** — read this first |
 | [`RESEARCH.md`](RESEARCH.md) | Hypothesis analysis: what the experiment showed, incl. contradictions |
+| [`RESEARCH-labrador.explanation.md`](RESEARCH-labrador.explanation.md) | The research, explained with no computer words |
+| [`README-labrador.explanation.md`](README-labrador.explanation.md) | The framework, explained with no computer words |
 | [`docs/DECISIONS.md`](docs/DECISIONS.md) | Decision-record format and workflow |
 | [`bin/singularity.js`](bin/singularity.js) | CLI — the enforcement surface |
 | [`features/payments/`](features/payments/) | Feature: money movement (`bulk-settlement`) |

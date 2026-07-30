@@ -1,23 +1,35 @@
 # Research notes: AI-compiled backend code
 
-**An artifact-driven examination of five hypotheses about AI as a compiler.**
+**Working through five hypotheses about AI as a compiler, by building the thing
+and measuring it.**
 
 Status: exploratory, n=1, single machine. This document is deliberately separate
-from [README.md](README.md). The README documents *what the framework does*. This
-documents *what the experiment showed*, including where it contradicted the
-hypotheses that motivated it.
+from [README.md](README.md) — the README documents *what the framework does*,
+this documents *what building it taught us about the ideas behind it*.
+
+*Prefer this without the jargon? [RESEARCH-labrador.explanation.md](RESEARCH-labrador.explanation.md)
+tells the same story with no computer words in it.*
+
+The point is not to grade the hypotheses. It is to find out **which parts already
+work, which parts need something that does not exist yet, and what that missing
+thing would have to look like.** Several sections end with a concrete open
+problem; if any of them interest you, they are the places where help would move
+this furthest. See [§11](#11-where-this-needs-help).
 
 ---
 
 ## 0. Summary of findings
 
-| # | Hypothesis | Verdict |
+| # | Hypothesis | Where it stands after building it |
 |---|---|---|
-| H1 | Humans author intent in a structured, human-readable language | **Partially supported** — but the "language" is half-formal, and the informal half is unverified |
-| H2 | Production code is unreadable; the human layer is "TypeScript for JavaScript" | **Weakened** — the analogy breaks on determinism and self-verification, and those are the load-bearing properties |
-| H3 | Lower resource usage, better optimisation | **Split** — strongly supported for memory, not supported for CPU, and it ignores inference cost |
-| H4 | AI compilers replace static compilers | **Directionally supported**, but the differences are not details — they forced three mechanisms that static compilation never needs |
-| H5 | AI-generated, continuously evolving apps will reshape browsers | **Untested here.** The only relevant evidence points the other way: browsers currently obstruct this architecture, for good reasons |
+| H1 | Humans author intent in a structured, human-readable language | **Works today.** One gap worth closing: rule *keys* are machine-checked, rule *prose* is not. Making arithmetic rules executable would close it |
+| H2 | The human layer is "TypeScript for JavaScript" | **The shape is right; three properties are missing.** `tsc` is deterministic, self-verifying and cheap. Get those and the analogy becomes exact |
+| H3 | Lower resource usage, better optimisation | **Confirmed for memory, decisively.** CPU needs a different approach than the one tried here — and inference cost belongs in the ledger |
+| H4 | AI compilers replace static compilers | **The loop works and compounds.** Three named problems sit between here and replacement, all of them research rather than engineering |
+| H5 | Continuously evolving AI apps reshape browsers | **Not tested here.** The interesting finding: browsers are not the blocker. Verification-at-evolution-speed is |
+
+None of these are refutations. Four of the five describe a working mechanism plus
+a named missing piece, and the missing pieces are specific enough to work on.
 
 The single most important result is not in the table. It is this:
 
@@ -105,7 +117,7 @@ Claims were tested by execution, not inspection:
 > *"Human creates intent via code understandable by humans — we might use a new
 > programming language that is easy to understand yet structured."*
 
-### Verdict: partially supported, with a specific and important gap
+### Where it stands: the readable layer works; one gap is worth closing
 
 The contracts are readable. A non-programmer can follow
 `"fee.2_fx: if currency !== USD then fee += trunc(amount * 15 / 10000)"`. Rules
@@ -163,13 +175,14 @@ both. This was not attempted.
 > *"Production code is not readable for humans; the human layer is like
 > TypeScript for JavaScript."*
 
-### Verdict: the analogy is appealing and it breaks where it matters
+### Where it stands: the right shape, missing three properties
 
 The surface parallel holds: two artifacts, one authored and one generated, one
 readable and one not, generated output committed and never hand-edited.
 
-The parallel fails on four properties, and they are precisely the properties that
-make `tsc` trustworthy:
+Four properties separate the two, and they are precisely the properties that make
+`tsc` trustworthy. Naming them is useful, because each is a thing that could in
+principle be built:
 
 | Property | `tsc` | AI compiler (observed) |
 |---|---|---|
@@ -193,9 +206,12 @@ to invent three mechanisms that have no `tsc` equivalent:
    JavaScript. An AI compiler makes semantic choices the contract did not
    specify, and those choices are invisible in unreadable output.
 
-**A better analogy than TypeScript is a build-artifact cache with a
-non-reproducible builder** — closer to a vendored binary dependency than to a
-compiler. That reframing changes what safeguards are required.
+**Until those properties exist, the closer analogy is a build-artifact cache with
+a non-reproducible builder** — nearer to a vendored binary dependency than to a
+compiler. That is not a criticism of the hypothesis so much as a description of
+the work between here and it: make compilation reproducible and give the compiler
+its own verification, and "TypeScript for JavaScript" becomes literally accurate
+rather than aspirational.
 
 ### The circularity, and what partially breaks it
 
@@ -219,7 +235,7 @@ exercise.
 > *"This approach might lower usage of resources, better optimisation, and end
 > with resources we currently possess being used more efficiently."*
 
-### Verdict: strongly supported for memory, not supported for CPU
+### Where it stands: memory confirmed; CPU needs a different route
 
 This hypothesis had the most data available. It splits cleanly.
 
@@ -235,7 +251,7 @@ Churn is the load-bearing figure. Eliminating it removes GC pauses from the
 latency tail, and interactive fleets are sized for p99, not mean. A model with
 stated assumptions puts pod density around 4x on the memory-bound dimension.
 
-**CPU — not supported.**
+**CPU — not from this technique.**
 
 | Comparison | Result |
 |---|---|
@@ -280,7 +296,7 @@ compiler is not.
 > *"We will understand abstract code but it will work the same as compilers work
 > currently. We will have AI compilers instead of static compilers."*
 
-### Verdict: directionally supported; the differences are load-bearing
+### Where it stands: the loop works and compounds; three problems remain
 
 The pipeline genuinely functioned as a compiler: contract in, optimised
 procedural code out, human never editing the output, regeneration on contract
@@ -333,7 +349,7 @@ tasks.
 > application development won't be only about static features but predicting
 > user needs within an app that constantly evolves from client input."*
 
-### Verdict: untested here — and the only relevant evidence points the other way
+### Where it stands: not tested here — and the blocker is probably not browsers
 
 Nothing in this project tests adaptive or self-modifying applications. What it
 does provide is two concrete, unplanned data points about how browsers currently
@@ -350,11 +366,17 @@ treat this architecture, and **both are obstacles**:
    CSP cannot run it.
 
 Both restrictions exist because of Spectre and XSS — serious, well-founded
-security engineering. So the honest framing is not "browsers will adapt" but:
+security engineering. So rather than "browsers will adapt", the productive
+framing is:
 
-> **AI-generated code that generates code collides head-on with the two browser
-> security mechanisms built to contain exactly that capability.** The tension is
-> real, and it will not be resolved by browsers simply relaxing.
+> **AI-generated code that generates code meets the two browser security
+> mechanisms built to contain exactly that capability.** These will not be
+> relaxed, and they should not be. Anything built here has to work *with* them.
+
+That is a constraint, not a dead end, and it points at real design work: WASM
+avoids the `unsafe-eval` problem entirely, origin-isolated deployment makes
+COOP/COEP tractable, and a non-shared `ArrayBuffer` fallback (already implemented
+and tested here) keeps most of the benefit without cross-origin isolation at all.
 
 ### The harder problem H5 understates
 
@@ -368,11 +390,19 @@ role of the test suite, and who writes it?* If the answer is "the AI", the
 circularity in §3 returns without the differential-derivation and mutation-testing
 mitigations, which both required deliberate human design.
 
-**H5 is not blocked by browsers. It is blocked by verification-at-evolution-speed,
-which is unsolved.** That reframing is the useful contribution this artifact can
-make to the hypothesis, and it suggests the research direction: not "how do we
-make apps evolve" but "how do we verify something that changes faster than humans
-can review it."
+**So the interesting problem in H5 is not browsers — it is
+verification-at-evolution-speed.** That reframing is the most useful thing this
+artifact can offer the hypothesis, because it turns a vague ambition into a
+stateable research question:
+
+> *How do you verify something that changes faster than humans can review it?*
+
+That question has partial answers worth pursuing: property-based testing
+generates checks rather than requiring them to be written; metamorphic testing
+verifies relationships between outputs when no oracle exists; runtime contract
+checking moves verification from build time to execution time. None were tried
+here. Any of them would be a substantial step toward H5, and they are more
+tractable than they sound."
 
 ---
 
@@ -402,10 +432,25 @@ That is not overhead to be optimised away — the whole argument for trusting
 unreadable generated code rests on it. Remove the verification and you have
 unreviewable code with no safety property at all.
 
-This reframes the productivity question. The approach does not reduce the work;
-it **relocates** it — from writing implementation to specifying behaviour and
-proving conformance. Whether that is a gain depends entirely on whether your
-bottleneck was ever typing implementation code. For most teams it was not.
+This reframes the productivity question, but not in the direction it first
+appears. Two things are true simultaneously:
+
+**Cost-to-build fell sharply.** The whole artifact — runtime, CLI, two workflows,
+140 adversarial checks, five benchmark suites — cost roughly **$100 in inference
+and a fortnight of part-time steering.** Hand-writing an arena allocator, drift
+detection, decision-coverage tooling and adversarial suites of this depth is
+comfortably weeks of senior engineering time. On cost-to-produce, the gain is
+large and not in dispute.
+
+**But the work relocated rather than vanished** — from writing implementation to
+specifying behaviour and proving conformance. Whether that is a net gain depends
+on whether typing implementation was ever your bottleneck. For many teams it was
+not; specification and verification were.
+
+The planning implication is concrete: an organisation adopting this pattern
+should budget for the 82%, not the 18%. Teams that resource the verification get
+the cost-to-build gain safely. Teams that do not get several thousand lines
+nobody can vouch for — which is worse than not having generated them at all.
 
 ---
 
@@ -477,54 +522,124 @@ reason the observation above is stated so narrowly.
 
 ---
 
-## 10. Open questions
+## 10. Where this leaves the idea
 
-Ordered by how much they would change the conclusions:
+The hypotheses were productive, including — especially — where measurement
+disagreed with them. Building the artifact produced a working framework, two
+measured workloads, and a much clearer picture of what the vision actually
+requires.
 
-1. **Does an executable-arithmetic intent language close the H1 gap?** Highest
-   leverage: it would convert test-based confidence into compiler-based proof for
-   the subset that matters most.
-2. **Is AI compilation reproducible enough to stop committing output?** Determines
-   whether "AI compiler" is a compiler or a cache.
-3. **What is the inference cost per compile, amortised over the artifact's life?**
-   Nobody publishes this. Without it, efficiency claims are incomplete.
-4. **Does the approach survive contact with a team?** Concurrent contract edits,
-   decision-record merge conflicts, and engineers who did not write the contracts
-   are entirely untested.
-5. **Does it survive a non-arithmetic workload?** String processing, graph
-   traversal, I/O orchestration. The selection effect in §1 is severe.
-6. **Can verification keep pace with continuous evolution (H5)?** The unsolved
-   problem underneath the most ambitious hypothesis.
-7. **Is the AI's failure to self-audit a capability limit or a prompting gap?**
-   Cheap to test, and it bears directly on §9.
+**Already working:** intent/implementation separation is practical and readable;
+the memory profile improves substantially and repeatably; the compiler loop
+functions and compounds across modules, with the second workflow taking markedly
+less effort than the first.
+
+**Working, but needing something that does not exist yet:** reproducible
+compilation, compiler-level verification, and an executable subset of the intent
+language. Each is a named, stateable problem rather than a vague gap — and each
+would move several hypotheses at once. Reproducibility alone would convert H2's
+analogy from aspirational to accurate and remove the need for two of the three
+mechanisms this project had to invent.
+
+**Different from expected:** the gains showed up in memory rather than CPU, and
+the browser constraints are security mechanisms to design around rather than
+obstacles that will yield.
+
+**Not hypothesised by anyone, and the most transferable result:** verification is
+not scaffolding around the idea — it *is* the idea. 82% of the written artifact
+exists to constrain the 18% that runs, and that ratio is what makes unreadable
+generated code defensible at all. Any future version of this vision inherits that
+constraint — removing the verification does not yield a leaner version of the
+approach, it yields unreviewable code with no safety property whatsoever. That is
+why [§11](#11-where-this-needs-help) leads with the work that would shrink it.
+
+The most reusable result is methodological rather than technical: **a system that
+generates its own claims should also generate the means of falsifying them, and a
+human should decide when to pull the trigger.** In this project that combination
+worked. It cost a headline number, and the work is better for having lost it.
+
+If you think any of these conclusions are wrong, the fastest way to show it is to
+clone the repo and run the benchmarks — every number here is reproducible, and a
+contradicting measurement is more interesting to me than agreement.
 
 ---
 
-## 11. Conclusion
+## 11. Where this needs help
 
-The hypotheses were productive even where wrong. Building the artifact to test
-them produced a working framework, two measured workloads, and — more usefully —
-several results that contradict what the hypotheses predicted.
+The point of publishing an n=1 experiment is to find out which parts survive
+contact with other people. These are the places where a contribution, a
+contradiction, or an afternoon of someone else's expertise would move things
+furthest — roughly in order of leverage.
 
-**What held:** intent/implementation separation is workable; the resource profile
-genuinely improves in the memory dimension; the compiler loop functions and
-compounds across modules.
+### 1. An executable subset of the intent language *(H1, H2)*
 
-**What did not:** the TypeScript analogy breaks precisely where trust comes from;
-CPU efficiency did not improve against competent baselines and sometimes
-regressed; browsers currently obstruct rather than accommodate.
+Today a rule like `fee.2_fx: fee += trunc(amount * 15 / 10000)` is prose that a
+human reads and a test happens to check. If arithmetic rules could be **evaluated
+as a reference oracle**, conformance would become a property the compiler checks
+rather than something a test samples.
 
-**What was learned that nobody hypothesised:** verification is not scaffolding
-around the idea — it *is* the idea. 82% of the written artifact exists to
-constrain the 18% that runs, and that ratio is what makes unreadable generated
-code defensible at all. Removing it does not yield a leaner version of this
-approach; it yields unreviewable code with no safety property whatsoever.
+This is the single highest-leverage item here. It would close H1's gap, supply
+H2's missing self-verification, and shrink the verification ratio in §7. It needs
+someone who has thought about small expression languages and their semantics —
+not a large project, but one requiring real care about what stays formal and what
+stays prose.
 
-The most reusable result is methodological rather than technical: **a system that
-generates its own claims should be required to generate the means of falsifying
-them, and a human should be required to pull the trigger.** In this project that
-combination worked. It cost a headline number, and the project is better for
-having lost it.
+### 2. Is AI compilation reproducible enough to stop committing output? *(H4)*
+
+Nobody seems to have measured this properly. Given the same contract, same model,
+same version, temperature zero: how similar is the output across runs? Identical?
+Semantically equivalent but textually different? Occasionally divergent?
+
+The answer determines whether "AI compiler" is a compiler or a cache, and it is
+**cheap to test** — a script, a few hundred compilations, a diff. If anyone has
+run this, the result would settle a question this project could only work around.
+
+### 3. What does inference actually cost, amortised? *(H3)*
+
+This experiment cost about $100. That number is nearly absent from public
+discussion of AI-assisted development, which makes every efficiency claim
+incomplete, including the ones here. Real data — cost per compile, per feature,
+per regeneration cycle, across different project sizes — would let people reason
+about this economically rather than anecdotally.
+
+### 4. Does it survive a non-arithmetic workload? *(all)*
+
+Both workloads here are dense integer batch arithmetic: the shape most favourable
+to the technique. String processing, graph traversal, I/O orchestration, and
+stateful protocol handling are all untested. Some of them may simply not fit, and
+knowing *which* would sharpen the "when not to use this" guidance considerably.
+
+### 5. Does it survive a team? *(all)*
+
+Everything here was one person and one session. Concurrent contract edits, merge
+conflicts in decision records, handover to engineers who did not write the
+contracts, and whether the decision log stays useful at 200 records rather than
+15 — all unknown. This is the failure mode most likely to make the whole approach
+impractical, and it cannot be tested solo.
+
+### 6. Verification at evolution speed *(H5)*
+
+The unsolved problem underneath the most ambitious hypothesis. Property-based
+testing, metamorphic testing, and runtime contract checking are the obvious
+starting points, and none were tried. Anyone working on continuously-adapting
+systems has probably thought harder about this than this project has.
+
+### 7. Is the AI's failure to self-audit a capability limit or a prompting gap?
+
+Cheap to test and bears directly on [§9](#9-adjacent-hypothesis--deferred-to-a-separate-paper):
+give the same system a standing instruction to adversarially audit its own claims
+before reporting, and measure whether the strawman-baseline error still gets
+through. This project did not run that test, which is why the observation in §9 is
+stated so narrowly.
+
+---
+
+**How to engage.** Contradicting measurements are more valuable to me than
+agreement — every figure here is reproducible from a clean clone, and if one does
+not replicate on your hardware I would like to know. Issues and discussions on
+the repo are the best channel. If you have prior art on any of the seven items
+above, pointing at it is a genuine contribution: several of these are probably
+solved somewhere and I have not found it.
 
 ---
 
