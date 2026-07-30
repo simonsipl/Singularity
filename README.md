@@ -59,7 +59,47 @@ An adversarial audit of this repo asked the right question: is the baseline a st
 | Idiomatic HOF style (`.reduce`, spread per record) | 192 ms | exec is **13x faster** |
 | Honest plain loop over the same objects | 12.9 ms | exec is **0.88x — slightly slower** |
 
-On this workload — which reads *every field* of every record — the SoA arena contributes **no traversal speedup at all**. The 13x is entirely attributable to the baseline's allocation style, which disciplined plain JavaScript also avoids. What the arena genuinely buys: **memory density** (18 MB off-heap vs 145 MB GC-scanned), **allocation churn** (4.7 KB vs 210 MB per batch, hence flat tail latency), **zero-copy worker sharing**, and wins on **partial-field scans** that this benchmark does not measure. Quote those, not the 13x.
+On a full-field scan over allocation-ordered monomorphic objects, the SoA arena contributes **no traversal speedup**. The 13x is entirely attributable to the baseline's allocation style, which disciplined plain JavaScript also avoids. Quote the matrix below, not the 13x.
+
+### The full matrix
+
+[`tests/benchmark-matrix.js`](tests/benchmark-matrix.js) crosses four implementation strategies with the workload dimensions that actually move numbers. Every variant is asserted byte-identical to the exec output before timing; each AoS variant gets its own copy of the kernel so inline-cache pollution cannot leak between measurements.
+
+**Full pipeline** (validate + fee + balance; reads all 5 fields; 1M records):
+
+| Variant | Best | Per rec | vs exec |
+|---|---|---|---|
+| `hof` — `.reduce` + spread per record | 130.37 ms | 130.4 ns | 8.6x slower |
+| `aos-seq` — plain loop, allocation-ordered objects | 22.31 ms | 22.3 ns | 1.5x slower |
+| `aos-scat` — same objects, scattered across the heap | 79.31 ms | 79.3 ns | 5.2x slower |
+| `aos-poly` — 8 hidden classes, megamorphic sites | 22.39 ms | 22.4 ns | 1.5x slower |
+| `soa-exec` — the arena | 15.18 ms | 15.2 ns | 1.0x |
+
+**Partial scan** (sum valid amounts; reads 1 field of 5; 1M records):
+
+| Variant | Best | Per rec | vs exec |
+|---|---|---|---|
+| `hof` — `.filter` + `.reduce` | 21.45 ms | 21.4 ns | 8.8x slower |
+| `aos-seq` | 5.54 ms | 5.5 ns | 2.3x slower |
+| `aos-scat` | 28.57 ms | 28.6 ns | **11.8x slower** |
+| `aos-poly` | 5.44 ms | 5.4 ns | 2.2x slower |
+| `soa-exec` | 2.43 ms | 2.4 ns | 1.0x |
+
+**Hot-subset sweep** (full pipeline over the first *s* records of a 1M-object pool):
+
+| Records | aos-seq | aos-scat | soa-exec | scat/exec |
+|---|---|---|---|---|
+| 10,000 | 0.20 ms | 0.27 ms | 0.40 ms | **0.67x — exec loses** |
+| 100,000 | 2.12 ms | 3.32 ms | 1.66 ms | 2.0x |
+| 1,000,000 | 23.02 ms | 80.98 ms | 15.21 ms | 5.3x |
+
+What the matrix actually says:
+
+- **Memory locality dwarfs everything else.** Scattering identical objects across the heap — same shape, same logical order — costs 3.6x on the full pipeline and 5x on the partial scan. Meanwhile 8-way shape polymorphism, the thing folk wisdom warns about, cost ~nothing here (22.39 vs 22.31 ms): on a memory-bound loop the pointer chase is the tax, not the map check. `aos-scat` is not an exotic case; it is what a long-lived object cache looks like after GC and time.
+- **The arena's decisive win is the partial scan** — 11.8x over scattered objects — because a cache line of `Int32Array` carries 16 useful values while a cache line of object graph is mostly headers and pointers. The arena is also *immune to heap history by construction*: `aos-seq` measured 12.9 ms standalone but 22.3 ms with 435 MB of other objects live, so plain-object performance depends on allocation history the code does not control. The exec's numbers do not move.
+- **The exec loses below ~50k records in an oversized arena** (0.67x at 10k), because `resetLedger` is O(capacity), not O(batch): it zeroes the full 1M-slot arena to process 10k records. Right-size the arena to the batch, or accept the flat reset tax. A benchmark that only showed 1M-record batches would have hidden this.
+
+The honest summary: **vs disciplined plain JavaScript, the exec is ≈1–1.5x on full scans, ~2x on partial scans over well-ordered objects, and 5–12x when the object graph has real-world heap entropy** — plus the memory claims (18 MB off-heap vs 145 MB GC-scanned; 4.7 KB vs 210 MB churn per batch) which hold everywhere and are the load-bearing ones for infrastructure cost.
 
 ### Read this before quoting those numbers
 

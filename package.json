@@ -15,7 +15,9 @@
     "decisions": "node bin/singularity.js decisions",
     "layout": "node bin/singularity.js layout",
     "demo": "node examples/salon-profiler.demo.js",
-    "bench": "node --expose-gc --max-old-space-size=6144 tests/benchmark.js"
+    "bench": "node --expose-gc --max-old-space-size=6144 tests/benchmark.js",
+    "bench:honest": "node tests/benchmark-honest.js",
+    "bench:matrix": "node --expose-gc --max-old-space-size=6144 tests/benchmark-matrix.js"
   },
   "engines": {
     "node": ">=18"
